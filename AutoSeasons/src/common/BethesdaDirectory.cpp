@@ -1,0 +1,744 @@
+#include "common/BethesdaDirectory.hpp"
+
+#include "common/BethesdaGame.hpp"
+#include "util/ContainerUtil.hpp"
+#include "util/FileUtil.hpp"
+#include "util/Logger.hpp"
+#include "util/StringUtil.hpp"
+
+#include <binary_io/any_stream.hpp>
+#include <binary_io/memory_stream.hpp>
+#include <boost/algorithm/string/case_conv.hpp>
+#include <boost/algorithm/string/classification.hpp>
+#include <boost/algorithm/string/join.hpp>
+#include <boost/algorithm/string/predicate.hpp>
+#include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/trim.hpp>
+#include <boost/crc.hpp>
+#include <bsa/tes4.hpp>
+#include <spdlog/spdlog.h>
+
+#include <algorithm>
+#include <cctype>
+#include <cstddef>
+#include <cstdio>
+#include <cstdlib>
+#include <exception>
+#include <fileapi.h>
+#include <filesystem>
+#include <fstream>
+#include <map>
+#include <memory>
+#include <minwindef.h>
+#include <mutex>
+#include <shared_mutex>
+#include <shlwapi.h>
+#include <stdexcept>
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#include <winnt.h>
+
+using namespace std;
+using namespace StringUtil;
+
+BethesdaDirectory::BethesdaDirectory(BethesdaGame* bg,
+                                     std::unordered_set<std::filesystem::path> foldersToMap,
+                                     filesystem::path generatedPath)
+    : m_generatedDir(std::move(generatedPath))
+    , m_bg(bg)
+    , m_foldersToMap(std::move(foldersToMap))
+{
+    // Assign instance vars
+    m_dataDir = filesystem::path(this->m_bg->getGameDataPath());
+
+    // Log starting message
+    Logger::info(L"Opening Data Folder \"{}\"", m_dataDir.wstring());
+}
+
+BethesdaDirectory::BethesdaDirectory(filesystem::path dataPath,
+                                     std::unordered_set<std::filesystem::path> foldersToMap,
+                                     filesystem::path generatedPath)
+    : m_dataDir(std::move(dataPath))
+    , m_generatedDir(std::move(generatedPath))
+    , m_foldersToMap(std::move(foldersToMap))
+    , m_bg(nullptr)
+{
+    // Log starting message
+    Logger::info(L"Opening Data Folder \"{}\"", m_dataDir.wstring());
+}
+
+//
+// Constant Definitions
+//
+auto BethesdaDirectory::getINIBSAFields() -> vector<string>
+{
+    // these fields will be searched in ini files for manually specified BSA
+    // loading
+    const static vector<string> iniBSAFields
+        = {"sResourceArchiveList", "sResourceArchiveList2", "sResourceArchiveListBeta"};
+
+    return iniBSAFields;
+}
+
+auto BethesdaDirectory::getExtensionBlocklist() -> vector<wstring>
+{
+    // any file that ends with these strings will be ignored
+    // allowed BSAs etc. to be hidden from the file map since this object is an
+    // abstraction of the data directory that no longer factors BSAs for
+    // downstream users
+    const static vector<wstring> extensionBlocklist = {L".bsa", L".esp", L".esl", L".esm"};
+
+    return extensionBlocklist;
+}
+
+auto BethesdaDirectory::checkGlob(const wstring& str,
+                                  const vector<wstring>& globList) -> bool
+{
+    // convert wstring vector to LPCWSTR vector
+    vector<LPCWSTR> globListCstr = convertWStringToLPCWSTRVector(globList);
+
+    // convert wstring to LPCWSTR
+    LPCWSTR strCstr = str.c_str();
+
+    // check if string matches any glob
+    return std::ranges::any_of(globListCstr, [&](LPCWSTR glob) { return PathMatchSpecW(strCstr, glob); });
+}
+
+void BethesdaDirectory::populateFileMap(bool includeBSAs)
+{
+    // clear map before populating
+    {
+        const unique_lock lock(m_fileMapMutex);
+        m_fileMap.clear();
+        m_generatedFileRestoreMap.clear();
+    }
+
+    if (includeBSAs && m_bg != nullptr) {
+        // add BSA files to file map
+        addBSAFilesToMap();
+    }
+
+    // add loose files to file map
+    addLooseFilesToMap();
+}
+
+auto BethesdaDirectory::getFileMap() const -> const map<filesystem::path,
+                                                        BethesdaDirectory::BethesdaFile>&
+{
+    return m_fileMap;
+}
+
+auto BethesdaDirectory::getFile(const filesystem::path& relPath) -> vector<std::byte>
+{
+    // find bsa/loose file to open
+    const BethesdaFile& file = getFileFromMap(relPath);
+    if (file.path.empty()) {
+        throw runtime_error("File not found in file map");
+    }
+
+    vector<std::byte> outFileBytes;
+    const shared_ptr<BSAFile> bsaStruct = file.bsaFile;
+    if (bsaStruct == nullptr) {
+        filesystem::path filePath;
+        if (file.generated) {
+            filePath = m_generatedDir / relPath;
+        } else {
+            filePath = m_dataDir / relPath;
+        }
+
+        outFileBytes = FileUtil::getFileBytes(filePath);
+    } else {
+        const filesystem::path bsaPath = bsaStruct->path;
+
+        // this is a bsa archive file
+        const bsa::tes4::version& bsaVersion = bsaStruct->version;
+        const bsa::tes4::archive& bsaObj = bsaStruct->archive;
+
+        string parentPath = utf16toASCII(relPath.parent_path().wstring());
+        string filename = utf16toASCII(relPath.filename().wstring());
+
+        const auto& file = bsaObj[parentPath][filename];
+        if (file) {
+            binary_io::any_ostream aos {std::in_place_type<binary_io::memory_ostream>};
+            // read file from output stream
+            try {
+                file->write(aos, bsaVersion);
+            } catch (...) {
+                Logger::error(L"Failed to read file: {}", relPath.wstring());
+                return {};
+            }
+
+            auto& s = aos.get<binary_io::memory_ostream>();
+            outFileBytes = s.rdbuf();
+        } else {
+            throw runtime_error("File not found in BSA archive");
+        }
+    }
+
+    if (outFileBytes.empty()) {
+        return {};
+    }
+
+    return outFileBytes;
+}
+
+void BethesdaDirectory::addGeneratedFile(const filesystem::path& relPath)
+{
+    const unique_lock lock(m_fileMapMutex);
+
+    const auto existingIt = m_fileMap.find(relPath);
+    if (existingIt != m_fileMap.end() && !existingIt->second.generated) {
+        // Keep the original/native source so deletion of generated entries can restore it.
+        m_generatedFileRestoreMap[relPath] = existingIt->second;
+    }
+
+    const BethesdaFile generatedFile = {.path = relPath, .bsaFile = nullptr, .generated = true};
+    m_fileMap[relPath] = generatedFile;
+}
+
+void BethesdaDirectory::clearGeneratedFiles()
+{
+    const unique_lock lock(m_fileMapMutex);
+
+    for (auto it = m_fileMap.begin(); it != m_fileMap.end();) {
+        if (it->second.generated) {
+            const auto restoreIt = m_generatedFileRestoreMap.find(it->first);
+            if (restoreIt != m_generatedFileRestoreMap.end()) {
+                it->second = restoreIt->second;
+                m_generatedFileRestoreMap.erase(restoreIt);
+                ++it;
+            } else {
+                it = m_fileMap.erase(it);
+            }
+        } else {
+            ++it;
+        }
+    }
+}
+
+auto BethesdaDirectory::isLooseFile(const filesystem::path& relPath) -> bool
+{
+    if (m_fileMap.empty()) {
+        throw runtime_error("File map was not populated");
+    }
+    const BethesdaFile file = getFileFromMap(relPath);
+    return !file.path.empty() && file.bsaFile == nullptr;
+}
+
+auto BethesdaDirectory::isBSAFile(const filesystem::path& relPath) -> bool
+{
+    if (m_fileMap.empty()) {
+        throw runtime_error("File map was not populated");
+    }
+
+    const BethesdaFile file = getFileFromMap(relPath);
+    return !file.path.empty() && file.bsaFile != nullptr;
+}
+
+auto BethesdaDirectory::isFile(const filesystem::path& relPath) -> bool
+{
+    if (m_fileMap.empty()) {
+        throw runtime_error("File map was not populated");
+    }
+
+    const BethesdaFile file = getFileFromMap(relPath);
+    return !file.path.empty();
+}
+
+auto BethesdaDirectory::isGenerated(const filesystem::path& relPath) -> bool
+{
+    if (m_fileMap.empty()) {
+        throw runtime_error("File map was not populated");
+    }
+
+    const BethesdaFile file = getFileFromMap(relPath);
+    return !file.path.empty() && file.generated;
+}
+
+auto BethesdaDirectory::getLooseFileFullPath(const filesystem::path& relPath) -> filesystem::path
+{
+    if (m_fileMap.empty()) {
+        throw runtime_error("File map was not populated");
+    }
+
+    const BethesdaFile file = getFileFromMap(relPath);
+
+    if (file.generated) {
+        return m_generatedDir / relPath;
+    }
+
+    return m_dataDir / relPath;
+}
+
+auto BethesdaDirectory::getDataPath() const -> filesystem::path { return m_dataDir; }
+
+auto BethesdaDirectory::getGeneratedPath() const -> filesystem::path { return m_generatedDir; }
+
+void BethesdaDirectory::addBSAFilesToMap()
+{
+    if (m_bg == nullptr) {
+        throw runtime_error("BethesdaGame object is not set which is required to load BSA files");
+    }
+
+    Logger::info("Adding BSA files to file map.");
+
+    // Get list of BSA files
+    const vector<wstring> bsaFiles = getBSALoadOrder();
+
+    // Loop through each BSA file
+    for (const auto& bsaName : bsaFiles) {
+        // add bsa to file map
+        addBSAToFileMap(bsaName);
+    }
+}
+
+void BethesdaDirectory::addLooseFilesToMap()
+{
+    Logger::info("Adding loose files to file map.");
+
+    // Map top level folder (not recursive)
+    for (auto it = filesystem::directory_iterator(m_dataDir, filesystem::directory_options::skip_permission_denied);
+         it != filesystem::directory_iterator();
+         ++it) {
+        const auto& entry = *it;
+
+        if (isHidden(entry.path()) || entry.is_directory()) {
+            continue;
+        }
+
+        const filesystem::path& filePath = entry.path();
+        filesystem::path relativePath = filePath.lexically_relative(m_dataDir);
+        relativePath = boost::to_lower_copy(relativePath.wstring());
+
+        // check type of file, skip BSAs and ESPs
+        if (!isFileAllowed(filePath)) {
+            continue;
+        }
+
+        updateFileMap(relativePath, nullptr);
+    }
+
+    // loop through each folder to map
+    for (const auto& folder : m_foldersToMap) {
+        // check if folder exists
+        const auto curCheckFolder = m_dataDir / folder;
+        if (!filesystem::exists(curCheckFolder)) {
+            continue;
+        }
+
+        for (auto it = filesystem::recursive_directory_iterator(curCheckFolder,
+                                                                filesystem::directory_options::skip_permission_denied);
+             it != filesystem::recursive_directory_iterator();
+             ++it) {
+            const auto entry = *it;
+
+            if (isHidden(entry.path())) {
+                if (entry.is_directory()) {
+                    // If it's a directory, don't recurse into it
+                    it.disable_recursion_pending();
+                }
+                continue;
+            }
+
+            const filesystem::path& filePath = entry.path();
+            filesystem::path relativePath = filePath.lexically_relative(m_dataDir);
+            relativePath = boost::to_lower_copy(relativePath.wstring());
+
+            // check type of file, skip BSAs and ESPs
+            if (!isFileAllowed(filePath)) {
+                continue;
+            }
+
+            updateFileMap(relativePath, nullptr);
+        }
+    }
+}
+
+void BethesdaDirectory::addBSAToFileMap(const wstring& bsaName)
+{
+    // log message
+    Logger::debug(L"Adding files from {} to file map.", bsaName);
+
+    bsa::tes4::archive bsaObj;
+    const filesystem::path bsaPath = m_dataDir / bsaName;
+
+    // skip BSA if it doesn't exist (can happen if it's in the ini but not in the
+    // data folder)
+    if (!filesystem::exists(bsaPath)) {
+        Logger::warn(L"BSA is in INI but does not exist: {}", bsaPath.wstring());
+        return;
+    }
+
+    bsa::tes4::version bsaVersion = bsa::tes4::version::tes5;
+    try {
+        bsaVersion = bsaObj.read(bsaPath);
+    } catch (...) {
+        Logger::error(L"Failed to read BSA file version: {}", bsaName);
+        return;
+    }
+
+    const shared_ptr<BSAFile> bsaStructPtr
+        = make_shared<BSAFile>(bsaPath, boost::to_lower_copy(bsaName), bsaVersion, bsaObj);
+
+    // loop iterator
+    for (auto& fileEntry : bsaObj) {
+        // get file entry from pointer
+        try {
+            // .second stores the files in the folder
+            const auto fileName = fileEntry.second;
+
+            // loop through files in folder
+            for (const auto& entry : fileName) {
+
+                if (!containsOnlyAscii(string(fileEntry.first.name()))
+                    || !containsOnlyAscii(string(entry.first.name()))) {
+                    Logger::warn(L"File {}\\{} in BSA {} contains non-ascii characters",
+                                 windows1252toUTF16(string(fileEntry.first.name())),
+                                 windows1252toUTF16(string(entry.first.name())),
+                                 bsaName);
+
+                    continue;
+                }
+
+                // get folder name within the BSA vfs
+                const filesystem::path folderName = asciitoUTF16(string(fileEntry.first.name()));
+
+                if (!m_foldersToMap.contains(folderName.begin()->wstring())) {
+                    // skip if folder is not in the list of folders to map
+                    continue;
+                }
+
+                // get name of file
+                const wstring curEntry = asciitoUTF16(string(entry.first.name()));
+                filesystem::path curPath = folderName / curEntry;
+                curPath = boost::to_lower_copy(curPath.wstring());
+
+                // chekc if we should ignore this file
+                if (!isFileAllowed(curPath)) {
+                    continue;
+                }
+
+                // add to filemap
+                updateFileMap(curPath, bsaStructPtr);
+            }
+        } catch (...) {
+            Logger::error(L"Failed to get file pointer from BSA: {}", bsaName);
+            continue;
+        }
+    }
+}
+
+auto BethesdaDirectory::getBSALoadOrder() const -> vector<wstring>
+{
+    // get bsa files not loaded from esp (also initializes output vector)
+    vector<wstring> outBSAOrder = getBSAFilesFromINIs();
+
+    // get esp priority list
+    const vector<wstring> loadOrder = m_bg->getActivePlugins(true);
+
+    // list BSA files in data directory
+    const vector<wstring> allBSAFiles = getBSAFilesInDirectory();
+
+    // loop through each esp in the priority list
+    for (const auto& plugin : loadOrder) {
+        // add any BSAs to list
+        const vector<wstring> curFoundBSAs = findBSAFilesFromPluginName(allBSAFiles, plugin);
+        ContainerUtil::concatenateVectorsWithoutDuplicates(outBSAOrder, curFoundBSAs);
+    }
+
+    // log output
+    for (const auto& bsa : allBSAFiles) {
+        if (!ContainerUtil::isInVector(outBSAOrder, bsa)) {
+            Logger::warn(L"BSA file {} not loaded by any active plugin or INI.", bsa);
+        }
+    }
+
+    return outBSAOrder;
+}
+
+auto BethesdaDirectory::getModLookupFile(const filesystem::path& relPath) -> filesystem::path
+{
+    // get file
+    const BethesdaFile& file = getFileFromMap(relPath);
+    if (file.bsaFile != nullptr) {
+        return file.bsaFile->relPath;
+    }
+
+    return relPath;
+}
+
+auto BethesdaDirectory::getBSAFilesFromINIs() const -> vector<wstring>
+{
+    // output vector
+    vector<wstring> bsaFiles;
+
+    // find ini paths
+    const BethesdaGame::ININame iniLocs = m_bg->getINIPaths();
+
+    vector<filesystem::path> iniFileOrder = {iniLocs.ini, iniLocs.iniCustom};
+
+    // Find INIs in data folder
+    for (const auto& entry :
+         filesystem::directory_iterator(m_dataDir, filesystem::directory_options::skip_permission_denied)) {
+        if (entry.is_regular_file() && toLowerASCII(entry.path().extension().wstring()) == L".ini") {
+            iniFileOrder.push_back(entry.path());
+        }
+    }
+
+    // loop through each field
+    for (const auto& field : getINIBSAFields()) {
+        // loop through each ini file
+        wstring iniVal;
+        for (const auto& iniPath : iniFileOrder) {
+            const wstring curVal = readINIValue(iniPath, L"Archive", asciitoUTF16(field));
+            if (curVal.empty()) {
+                continue;
+            }
+
+            iniVal = curVal;
+        }
+
+        if (iniVal.empty()) {
+            continue;
+        }
+
+        // split into components
+        vector<wstring> iniComponents;
+        boost::split(iniComponents, iniVal, boost::is_any_of(","));
+        for (auto& bsa : iniComponents) {
+            // remove leading/trailing whitespace
+            boost::trim(bsa);
+
+            // add to output
+            ContainerUtil::addUniqueElement(bsaFiles, bsa);
+        }
+    }
+
+    return bsaFiles;
+}
+
+auto BethesdaDirectory::getBSAFilesInDirectory() const -> vector<wstring>
+{
+    vector<wstring> bsaFiles;
+
+    for (const auto& entry : filesystem::directory_iterator(this->m_dataDir)) {
+        if (entry.is_regular_file()) {
+            const auto fileExtension = entry.path().extension().wstring();
+            // only interested in BSA files
+            if (!boost::iequals(fileExtension, ".bsa")) {
+                continue;
+            }
+
+            // add to output
+            bsaFiles.push_back(entry.path().filename().wstring());
+        }
+    }
+
+    return bsaFiles;
+}
+
+auto BethesdaDirectory::findBSAFilesFromPluginName(const vector<wstring>& bsaFileList,
+                                                   const wstring& pluginPrefix) -> vector<wstring>
+{
+    vector<wstring> bsaFilesFound;
+    const wstring pluginPrefixLower = boost::to_lower_copy(pluginPrefix);
+
+    for (const wstring& bsa : bsaFileList) {
+        const wstring bsaLower = boost::to_lower_copy(bsa);
+        if (bsaLower.starts_with(pluginPrefixLower)) {
+            if (bsaLower == pluginPrefixLower + L".bsa") {
+                // load bsa with the plugin name before any others
+                bsaFilesFound.insert(bsaFilesFound.begin(), bsa);
+                continue;
+            }
+
+            // skip any BSAs that may start with the prefix but belong to a different
+            // plugin
+            wstring afterPrefix = bsa.substr(pluginPrefix.length());
+
+            // todo: Is this actually how the game handles BSA files? Example:
+            // 3DNPC0.bsa, 3DNPC1.bsa, 3DNPC2.bsa are loaded, todo: but 3DNPC -
+            // Textures.bsa is also loaded, whats the logic there?
+            if (afterPrefix.starts_with(L" ") && !afterPrefix.starts_with(L" -")) {
+                continue;
+            }
+
+            if (!afterPrefix.starts_with(L" ") && (isdigit(afterPrefix[0]) == 0)) {
+                continue;
+            }
+
+            bsaFilesFound.push_back(bsa);
+        }
+    }
+
+    return bsaFilesFound;
+}
+
+auto BethesdaDirectory::isFileAllowed(const filesystem::path& filePath) -> bool
+{
+    wstring fileExtension = filePath.extension().wstring();
+    boost::algorithm::to_lower(fileExtension);
+
+    return !(ContainerUtil::isInVector(getExtensionBlocklist(), fileExtension));
+}
+
+// helpers
+
+auto BethesdaDirectory::isPathAscii(const filesystem::path& path) -> bool
+{
+    return ranges::all_of(path.wstring(), [](wchar_t wc) { return wc <= ASCII_UPPER_BOUND; });
+}
+
+auto BethesdaDirectory::getFileFromMap(const filesystem::path& filePath) -> BethesdaDirectory::BethesdaFile
+{
+    // const filesystem::path lowerPath = getAsciiPathLower(filePath);
+
+    const shared_lock lock(m_fileMapMutex);
+    if (!m_fileMap.contains(filePath)) {
+        return BethesdaFile {.path = filesystem::path(), .bsaFile = nullptr};
+    }
+
+    return m_fileMap.at(filePath);
+}
+
+void BethesdaDirectory::updateFileMap(const filesystem::path& filePath,
+                                      shared_ptr<BethesdaDirectory::BSAFile> bsaFile,
+                                      const bool& generated)
+{
+    // const filesystem::path lowerPath = getAsciiPathLower(filePath);
+
+    const unique_lock lock(m_fileMapMutex);
+
+    const BethesdaFile newBFile = {.path = filePath, .bsaFile = std::move(bsaFile), .generated = generated};
+
+    m_fileMap[filePath] = newBFile;
+}
+
+auto BethesdaDirectory::isFileInBSA(const filesystem::path& file,
+                                    const std::vector<std::wstring>& bsaFiles) -> bool
+{
+    if (isBSAFile(file)) {
+        BethesdaFile const bethFile = getFileFromMap(file);
+        std::filesystem::path const bsaFilepath = bethFile.bsaFile->path.filename();
+        const std::wstring bsaFilename = bsaFilepath.wstring();
+
+        if (std::ranges::any_of(
+                bsaFiles, [&bsaFilename](std::wstring const& file) { return boost::iequals(file, bsaFilename); })) {
+            return true;
+        }
+    }
+    return false;
+}
+
+auto BethesdaDirectory::convertWStringToLPCWSTRVector(const vector<wstring>& original) -> vector<LPCWSTR>
+{
+    vector<LPCWSTR> output(original.size());
+    for (size_t i = 0; i < original.size(); i++) {
+        output[i] = original[i].c_str();
+    }
+
+    return output;
+}
+
+auto BethesdaDirectory::checkGlob(const LPCWSTR& str,
+                                  LPCWSTR& winningGlob,
+                                  const vector<LPCWSTR>& globList) -> bool
+{
+    if (!boost::equals(winningGlob, L"") && (PathMatchSpecW(str, winningGlob) != 0)) {
+        // no winning glob, check all globs
+        return true;
+    }
+
+    for (const auto& glob : globList) {
+        if (glob != winningGlob && (PathMatchSpecW(str, glob) != 0)) {
+            winningGlob = glob;
+            return true;
+        }
+    }
+
+    return false;
+}
+
+auto BethesdaDirectory::isHidden(const filesystem::path& path) -> bool
+{
+    // check if file is hidden in filesystem
+    DWORD const fileAttributes = GetFileAttributesW(path.c_str());
+    if (fileAttributes != INVALID_FILE_ATTRIBUTES && (fileAttributes & FILE_ATTRIBUTE_HIDDEN) != 0) {
+        return true;
+    }
+
+    // check if file is a dotfile
+    if (path.filename().wstring().starts_with(L".")) {
+        return true;
+    }
+
+    // check if file ends in .mohidden (MO2 hidden file)
+    if (boost::iequals(path.extension().wstring(), ".mohidden")) {
+        return true;
+    }
+
+    return false;
+}
+
+auto BethesdaDirectory::readINIValue(const filesystem::path& iniPath,
+                                     const wstring& section,
+                                     const wstring& key) -> wstring
+{
+    if (!filesystem::exists(iniPath)) {
+        return L"";
+    }
+
+    ifstream f(iniPath);
+    if (!f.is_open()) {
+        return L"";
+    }
+
+    string curLine;
+    string curSection;
+    bool foundSection = false;
+
+    while (getline(f, curLine)) {
+        boost::trim(curLine);
+
+        // ignore comments
+        if (curLine.empty() || curLine[0] == ';' || curLine[0] == '#') {
+            continue;
+        }
+
+        // Check if it's a section
+        if (curLine.front() == '[' && curLine.back() == ']') {
+            curSection = curLine.substr(1, curLine.size() - 2);
+            continue;
+        }
+
+        // Check if it's the correct section
+        if (boost::iequals(curSection, section)) {
+            foundSection = true;
+        }
+
+        if (!boost::iequals(curSection, section)) {
+            // exit if already checked section
+            if (foundSection) {
+                break;
+            }
+            continue;
+        }
+
+        // check key
+        const size_t pos = curLine.find('=');
+        if (pos != std::string::npos) {
+            // found key value pair
+            string curKey = curLine.substr(0, pos);
+            boost::trim(curKey);
+            if (boost::iequals(curKey, key)) {
+                string curValue = curLine.substr(pos + 1);
+                boost::trim(curValue);
+                return StringUtil::utf8toUTF16(curValue);
+            }
+        }
+    }
+
+    return L"";
+}

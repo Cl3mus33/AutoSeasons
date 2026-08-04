@@ -1,0 +1,56 @@
+{
+  "_language": "Português (Brasil)",
+  "common": {
+    "browse": "Procurar",
+    "cancel": "Cancelar"
+  },
+  "launcher": {
+    "language": {
+      "label": "Idioma"
+    },
+    "intro": "Analisa sua ordem de carregamento em busca de variantes de textura sazonais (ex.: rock01_AUT.dds ao lado de rock01.dds) e gera o plugin além dos arquivos Data/Seasons/*.ini para o plugin SKSE Seasons of Skyrim.",
+    "gameLocation": {
+      "label": "Local do jogo",
+      "dialogTitle": "Selecionar local do jogo"
+    },
+    "gameType": {
+      "label": "Tipo de jogo"
+    },
+    "outputLocation": {
+      "label": "Local de saída",
+      "dialogTitle": "Selecionar local de saída"
+    },
+    "blocklist": {
+      "label": "Lista de exclusão de variação sazonal",
+      "help": "Meshes que correspondam a uma regra aqui são ignorados pela variação sazonal (útil para meshes de interiores, já que o Seasons of Skyrim só troca registros em espaços externos). Curingas (*) são permitidos, ex.: \"*/interiors/*\". Clique com o botão direito para adicionar/remover linhas.",
+      "column": "Regra"
+    },
+    "editorIdKeywords": {
+      "label": "Palavras-chave de EditorID travadas por estação",
+      "help": "Registros cujo EditorID contenha uma dessas palavras (sem diferenciar maiúsculas/minúsculas) são totalmente excluídos da variação sazonal - útil para nomes que já indicam uma estação/bioma fixo, ex.: \"Coast\" ou \"River\". Clique com o botão direito para adicionar/remover linhas.",
+      "column": "Palavra-chave"
+    },
+    "startButton": "Iniciar aplicação",
+    "missingGameLocation": {
+      "title": "Local do jogo ausente",
+      "message": "Selecione o local de instalação do seu jogo."
+    },
+    "missingOutputLocation": {
+      "title": "Local de saída ausente",
+      "message": "Selecione um local de saída."
+    }
+  },
+  "progress": {
+    "starting": "Iniciando...",
+    "showDetails": "Mostrar detalhes",
+    "working": "Processando...",
+    "done": "Concluído.",
+    "failed": "Falha - veja os detalhes abaixo.",
+    "doneClose": "Concluído - Fechar",
+    "failedClose": "Falha - Fechar",
+    "completion": {
+      "title": "AutoSeasons",
+      "message": "Geração concluída. Não se esqueça de ativar o AutoSeasons.esp na lista de plugins do seu gerenciador de mods, caso ainda não esteja ativo."
+    }
+  }
+}

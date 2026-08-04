@@ -1,0 +1,69 @@
+{
+  "dependencies": [
+    {
+      "name": "boost-algorithm",
+      "version>=": "1.86.0"
+    },
+    {
+      "name": "boost-asio",
+      "version>=": "1.86.0"
+    },
+    {
+      "name": "boost-crc",
+      "version>=": "1.86.0"
+    },
+    {
+      "name": "boost-gil",
+      "version>=": "1.86.0"
+    },
+    {
+      "name": "boost-iostreams",
+      "version>=": "1.86.0"
+    },
+    {
+      "name": "boost-locale",
+      "version>=": "1.86.0"
+    },
+    {
+      "name": "cli11",
+      "version>=": "2.4.2"
+    },
+    {
+      "name": "cpptrace",
+      "version>=": "0.7.3"
+    },
+    {
+      "name": "directxtex",
+      "features": [
+        "dx11"
+      ],
+      "version>=": "2024-06-04"
+    },
+    {
+      "name": "nlohmann-json",
+      "version>=": "3.11.3#1"
+    },
+    {
+      "name": "rsm-bsa",
+      "features": [
+        "xmem"
+      ],
+      "version>=": "4.1.0"
+    },
+    {
+      "name": "spdlog",
+      "features": [
+        "wchar"
+      ],
+      "version>=": "1.15.0#1"
+    },
+    {
+      "name": "flatbuffers",
+      "version>=": "25.2.10"
+    },
+    {
+      "name": "wxwidgets",
+      "version>=": "3.3.1#1"
+    }
+  ]
+}

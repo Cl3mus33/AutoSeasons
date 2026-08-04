@@ -1,0 +1,25 @@
+# Build output (CMake + Ninja + vcpkg)
+buildRelease/
+build/
+out/
+
+# .NET build artifacts (outside buildRelease, if generated in-place)
+ASMutagenNE/bin/
+ASMutagenNE/obj/
+ASMutagen/bin/
+ASMutagen/obj/
+*.csproj.user
+
+# Per-user, per-run app data - never something to ship in the repo
+AutoSeasons_config.json
+AutoSeasons_Output/
+
+# IDE / editor
+.vs/
+.vscode/
+*.user
+CMakeUserPresets.json
+
+# OS cruft
+Thumbs.db
+.DS_Store

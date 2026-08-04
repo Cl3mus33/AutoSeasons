@@ -1,0 +1,56 @@
+{
+  "_language": "Deutsch",
+  "common": {
+    "browse": "Durchsuchen",
+    "cancel": "Abbrechen"
+  },
+  "launcher": {
+    "language": {
+      "label": "Sprache"
+    },
+    "intro": "Durchsucht deine Ladereihenfolge nach saisonalen Textur-Varianten (z. B. rock01_AUT.dds neben rock01.dds) und erstellt das Plugin sowie die Data/Seasons/*.ini-Dateien für das Seasons of Skyrim SKSE-Plugin.",
+    "gameLocation": {
+      "label": "Spielverzeichnis",
+      "dialogTitle": "Spielverzeichnis auswählen"
+    },
+    "gameType": {
+      "label": "Spieltyp"
+    },
+    "outputLocation": {
+      "label": "Ausgabeverzeichnis",
+      "dialogTitle": "Ausgabeverzeichnis auswählen"
+    },
+    "blocklist": {
+      "label": "Sperrliste für saisonale Variation",
+      "help": "Meshes, die einer Regel hier entsprechen, werden von der saisonalen Variation übersprungen (nützlich für Innenraum-Meshes, da Seasons of Skyrim nur Datensätze in Außenbereichen austauscht). Platzhalter (*) erlaubt, z. B. \"*/interiors/*\". Rechtsklick zum Hinzufügen/Entfernen von Zeilen.",
+      "column": "Regel"
+    },
+    "editorIdKeywords": {
+      "label": "Saisonal gesperrte EditorID-Schlüsselwörter",
+      "help": "Datensätze, deren EditorID eines dieser Wörter enthält (Groß-/Kleinschreibung wird ignoriert), werden vollständig von der saisonalen Variation ausgeschlossen - nützlich für Namen, die bereits eine feste Jahreszeit/Biom anzeigen, z. B. \"Coast\" oder \"River\". Rechtsklick zum Hinzufügen/Entfernen von Zeilen.",
+      "column": "Schlüsselwort"
+    },
+    "startButton": "Patchen starten",
+    "missingGameLocation": {
+      "title": "Spielverzeichnis fehlt",
+      "message": "Bitte wähle das Installationsverzeichnis deines Spiels aus."
+    },
+    "missingOutputLocation": {
+      "title": "Ausgabeverzeichnis fehlt",
+      "message": "Bitte wähle ein Ausgabeverzeichnis aus."
+    }
+  },
+  "progress": {
+    "starting": "Wird gestartet...",
+    "showDetails": "Details anzeigen",
+    "working": "Wird verarbeitet...",
+    "done": "Fertig.",
+    "failed": "Fehlgeschlagen - siehe Details unten.",
+    "doneClose": "Fertig - Schließen",
+    "failedClose": "Fehlgeschlagen - Schließen",
+    "completion": {
+      "title": "AutoSeasons",
+      "message": "Generierung abgeschlossen. Vergiss nicht, AutoSeasons.esp in der Plugin-Liste deines Mod-Managers zu aktivieren, falls es noch nicht aktiv ist."
+    }
+  }
+}

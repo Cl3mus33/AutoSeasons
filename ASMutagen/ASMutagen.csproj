@@ -1,0 +1,39 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <GenerateNativeExports>true</GenerateNativeExports>
+        <DnneRuntimeIdentifier>win-x64</DnneRuntimeIdentifier>
+        <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+        <SelfContained>true</SelfContained>
+        <DnneSelfContained_Experimental>true</DnneSelfContained_Experimental>
+        <EnableDynamicLoading>true</EnableDynamicLoading>
+        <Configurations>Release;Debug</Configurations>
+        <PlatformTarget>x64</PlatformTarget>
+        <Platforms>x64</Platforms>
+
+        <RestorePackagesPath>E:/Modding/AutoSeasons/buildRelease/ASMutagenNE/.nuget/packages</RestorePackagesPath>
+        <BaseIntermediateOutputPath>E:/Modding/AutoSeasons/buildRelease/ASMutagenNE/obj</BaseIntermediateOutputPath>
+        <BaseOutputPath>E:/Modding/AutoSeasons/buildRelease/ASMutagenNE/bin</BaseOutputPath>
+        <FlatBuffersGeneratedFolder>E:/Modding/AutoSeasons/buildRelease/ASMutagenNE/obj/flatbuffers/ASMutagenBuffers</FlatBuffersGeneratedFolder>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+        <DefineConstants>$(DefineConstants);DEBUG</DefineConstants>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='RelWithDebInfo|AnyCPU'">
+        <Optimize>true</Optimize>
+        <DebugType>pdbonly</DebugType>
+        <DebugSymbols>true</DebugSymbols>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <Compile Include="$(FlatBuffersGeneratedFolder)\*.cs" />
+        <PackageReference Include="DNNE" Version="2.0.7" />
+        <PackageReference Include="Google.FlatBuffers" Version="25.2.10" />
+        <PackageReference Include="Mutagen.Bethesda.Skyrim" Version="0.51.5" />
+    </ItemGroup>
+</Project>

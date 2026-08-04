@@ -1,0 +1,95 @@
+namespace ASMutagenBuffers;
+
+// A single texture set
+table TextureSet {
+  textures:[string] (required);
+}
+
+// A single alternate texture within the model usage
+table AlternateTexture {
+  slot_id:int;
+  slot_id_new:int;
+  slots:TextureSet (required);
+}
+
+// A single model usage
+table ModelUse {
+  mod_name:string (required);
+  form_id:uint;
+  sub_model:string (required);
+  is_weighted:bool; // This is readonly
+  mesh_file:string (required);
+  singlepass_mato:bool;  // This is readonly
+  is_ignored:bool; // This is readonly
+  type:string (required); // This is readonly
+  alternate_textures:[AlternateTexture] (required);
+  editor_id:string (required); // the base record's own EditorID, empty string if unset
+}
+
+// Container for multiple ModelUse entries
+table ModelUses {
+  uses:[ModelUse] (required);
+}
+
+root_type ModelUses;
+
+// A request to duplicate an existing model-referencing record (e.g. STAT) into a new
+// record that uses a different texture set, leaving the original record untouched.
+// One shape's alternate-texture override within a seasonal duplicate request. For STAT there is
+// one of these per NIF shape that has a seasonal texture sibling; for LTEX (no shape concept)
+// there is always exactly one, with shape_index/shape_name unused.
+table SeasonalTextureOverride {
+  shape_index:int; // shape's position in NifFile::GetShapes() order == the plugin AlternateTextures Index
+  shape_name:string; // the NiShape's own name; only used when creating a brand-new AlternateTextures entry
+  slots:TextureSet (required);
+}
+
+// A plain (mod, local FormID) reference - used both for a LandscapeTextureEntry's own Grasses
+// list (as scanned) and for the replacement Grasses list of a seasonal LTEX duplicate.
+table FormKeyRef {
+  mod_name:string (required);
+  form_id:uint;
+}
+
+table SeasonalDuplicateRequest {
+  mod_name:string (required);
+  form_id:uint;
+  type:string (required); // record type e.g. "STAT"
+  overrides:[SeasonalTextureOverride] (required);
+  season_suffix:string (required); // e.g. "AUT", appended to the generated EditorID
+  // LTEX only: if true, the duplicate's Grasses list is replaced with grass_overrides (which may
+  // be empty, meaning no grass at all for this season) instead of inheriting the base record's.
+  override_grasses:bool;
+  grass_overrides:[FormKeyRef];
+}
+
+table SeasonalDuplicateRequests {
+  requests:[SeasonalDuplicateRequest] (required);
+}
+
+// The result of a single duplicate request. new_form_id is 0 on failure.
+table SeasonalDuplicateResult {
+  mod_name:string (required);
+  form_id:uint; // original record's FormID, echoed back so C++ can match results to requests
+  new_mod_name:string (required);
+  new_form_id:uint;
+}
+
+table SeasonalDuplicateResults {
+  results:[SeasonalDuplicateResult] (required);
+}
+
+// A single LTEX (landscape texture) record's current diffuse texture, for the C++ side to scan
+// for seasonal siblings. LandscapeTexture has no alternate-texture system of its own (unlike
+// STAT/ARMO etc.) - its TextureSet FormLink is the only texture reference to check.
+table LandscapeTextureEntry {
+  mod_name:string (required);
+  form_id:uint;
+  slots:TextureSet (required); // full 8-slot texture set of the linked TXST; all-empty if unset
+  editor_id:string (required); // the LTEX record's own EditorID, empty string if unset
+  grasses:[FormKeyRef] (required); // the LTEX's own Grasses list, in order; empty if none
+}
+
+table LandscapeTextureEntries {
+  entries:[LandscapeTextureEntry] (required);
+}

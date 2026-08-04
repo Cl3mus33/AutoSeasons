@@ -1,0 +1,56 @@
+{
+  "_language": "Français",
+  "common": {
+    "browse": "Parcourir",
+    "cancel": "Annuler"
+  },
+  "launcher": {
+    "language": {
+      "label": "Langue"
+    },
+    "intro": "Analyse votre ordre de chargement à la recherche de variantes de textures saisonnières (ex. rock01_AUT.dds à côté de rock01.dds) et génère le plugin ainsi que les fichiers Data/Seasons/*.ini pour le plugin SKSE Seasons of Skyrim.",
+    "gameLocation": {
+      "label": "Emplacement du jeu",
+      "dialogTitle": "Sélectionner l'emplacement du jeu"
+    },
+    "gameType": {
+      "label": "Type de jeu"
+    },
+    "outputLocation": {
+      "label": "Emplacement de sortie",
+      "dialogTitle": "Sélectionner l'emplacement de sortie"
+    },
+    "blocklist": {
+      "label": "Liste d'exclusion des variations saisonnières",
+      "help": "Les meshes correspondant à une règle ici sont ignorés par la variation saisonnière (utile pour les meshes d'intérieur, car Seasons of Skyrim ne s'applique qu'aux espaces extérieurs). Les jokers (*) sont autorisés, ex. \"*/interiors/*\". Clic droit pour ajouter/retirer une ligne.",
+      "column": "Règle"
+    },
+    "editorIdKeywords": {
+      "label": "Mots-clés EditorID verrouillés par saison",
+      "help": "Les records dont l'EditorID contient un de ces mots (insensible à la casse) sont entièrement exclus de la variation saisonnière - utile pour les noms qui indiquent déjà une saison/un biome figé, ex. \"Coast\" ou \"River\". Clic droit pour ajouter/retirer une ligne.",
+      "column": "Mot-clé"
+    },
+    "startButton": "Lancer le patch",
+    "missingGameLocation": {
+      "title": "Emplacement du jeu manquant",
+      "message": "Veuillez sélectionner l'emplacement d'installation de votre jeu."
+    },
+    "missingOutputLocation": {
+      "title": "Emplacement de sortie manquant",
+      "message": "Veuillez sélectionner un emplacement de sortie."
+    }
+  },
+  "progress": {
+    "starting": "Démarrage...",
+    "showDetails": "Afficher les détails",
+    "working": "Traitement en cours...",
+    "done": "Terminé.",
+    "failed": "Échec - voir les détails ci-dessous.",
+    "doneClose": "Terminé - Fermer",
+    "failedClose": "Échec - Fermer",
+    "completion": {
+      "title": "AutoSeasons",
+      "message": "Génération terminée. N'oubliez pas d'activer AutoSeasons.esp dans la liste des plugins de votre gestionnaire de mods s'il ne l'est pas déjà."
+    }
+  }
+}

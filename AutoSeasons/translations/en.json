@@ -1,0 +1,56 @@
+{
+  "_language": "English",
+  "common": {
+    "browse": "Browse",
+    "cancel": "Cancel"
+  },
+  "launcher": {
+    "language": {
+      "label": "Language"
+    },
+    "intro": "Scans your load order for seasonal texture variants (e.g. rock01_AUT.dds next to rock01.dds) and generates the plugin + Data/Seasons/*.ini files for the Seasons of Skyrim SKSE plugin.",
+    "gameLocation": {
+      "label": "Game Location",
+      "dialogTitle": "Select Game Location"
+    },
+    "gameType": {
+      "label": "Game Type"
+    },
+    "outputLocation": {
+      "label": "Output Location",
+      "dialogTitle": "Select Output Location"
+    },
+    "blocklist": {
+      "label": "Seasonal Variation Blocklist",
+      "help": "Meshes matching a rule here are skipped by seasonal variation (useful for interior meshes, since Seasons of Skyrim only swaps records in exterior worldspaces). Wildcards (*) allowed, e.g. \"*/interiors/*\". Right click to add/remove rows.",
+      "column": "Rule"
+    },
+    "editorIdKeywords": {
+      "label": "Season-Locked EditorID Keywords",
+      "help": "Records whose EditorID contains one of these words (case-insensitive) are skipped by seasonal variation entirely - useful for names that already signal a fixed season/biome, e.g. \"Coast\" or \"River\". Right click to add/remove rows.",
+      "column": "Keyword"
+    },
+    "startButton": "Start Patching",
+    "missingGameLocation": {
+      "title": "Missing Game Location",
+      "message": "Please select your game's install location."
+    },
+    "missingOutputLocation": {
+      "title": "Missing Output Location",
+      "message": "Please select an output location."
+    }
+  },
+  "progress": {
+    "starting": "Starting...",
+    "showDetails": "Show details",
+    "working": "Working...",
+    "done": "Done.",
+    "failed": "Failed - see details below.",
+    "doneClose": "Done - Close",
+    "failedClose": "Failed - Close",
+    "completion": {
+      "title": "AutoSeasons",
+      "message": "Generation complete. Don't forget to enable AutoSeasons.esp in your mod manager's plugin list if it isn't already active."
+    }
+  }
+}
