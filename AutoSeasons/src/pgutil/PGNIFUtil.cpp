@@ -432,12 +432,6 @@ auto PGNIFUtil::getTexMatch(const wstring& base,
     const auto it = searchMap.find(baseLower);
 
     if (it != searchMap.end()) {
-        // Found a match
-        if (!boost::equals(it->first, baseLower)) {
-            // No exact match
-            return {};
-        }
-
         if (it->second.empty()) {
             // No textures
             return {};

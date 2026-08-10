@@ -18,6 +18,44 @@
 
 using namespace std;
 
+namespace {
+// Shared by getModelUses (per-mesh query) and getAllModelUses (whole-load-order dump) - converts
+// one wire-level PGMutagenWrapper::ModelUse into the domain FormKey+MeshUseAttributes pair.
+auto convertModelUse(const PGMutagenWrapper::ModelUse& modelUse)
+    -> pair<PGMeshPermutationTracker::FormKey, PGPlugin::MeshUseAttributes>
+{
+    const PGMeshPermutationTracker::FormKey formKey {
+        .modKey = modelUse.modName,
+        .formID = modelUse.formID,
+        .subMODL = modelUse.subModel,
+    };
+    PGPlugin::MeshUseAttributes attributes;
+    attributes.isWeighted = modelUse.isWeighted;
+    attributes.singlepassMATO = modelUse.singlepassMATO;
+    attributes.isIgnored = modelUse.isIgnored;
+    attributes.isDummyUse = false;
+    attributes.recType = PGPlugin::getRecTypeFromString(modelUse.type);
+    attributes.editorID = modelUse.editorID;
+
+    for (const auto& altTex : modelUse.alternateTextures) {
+        // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers)
+        attributes.alternateTextures[altTex.slotID] = PGTypes::TextureSet {
+            altTex.slots[0],
+            altTex.slots[1],
+            altTex.slots[2],
+            altTex.slots[3],
+            altTex.slots[4],
+            altTex.slots[5],
+            altTex.slots[6],
+            altTex.slots[7],
+        };
+        // NOLINTEND(cppcoreguidelines-avoid-magic-numbers)
+    }
+
+    return { formKey, attributes };
+}
+} // namespace
+
 auto PGPlugin::getPluginLangFromString(const std::string& lang) -> PluginLang
 {
     return EnumStringHelper::enumFromString(lang, PLUGINLANG_TABLE, PluginLang::ENGLISH);
@@ -157,35 +195,49 @@ auto PGPlugin::getModelUses(const std::wstring& modelPath) -> std::vector<std::p
     });
 
     for (const auto& modelUse : modelUses) {
-        const PGMeshPermutationTracker::FormKey formKey {
-            .modKey = modelUse.modName,
-            .formID = modelUse.formID,
-            .subMODL = modelUse.subModel,
-        };
-        MeshUseAttributes attributes;
-        attributes.isWeighted = modelUse.isWeighted;
-        attributes.singlepassMATO = modelUse.singlepassMATO;
-        attributes.isIgnored = modelUse.isIgnored;
-        attributes.isDummyUse = false;
-        attributes.recType = getRecTypeFromString(modelUse.type);
-        attributes.editorID = modelUse.editorID;
+        result.push_back(convertModelUse(modelUse));
+    }
 
-        for (const auto& altTex : modelUse.alternateTextures) {
-            // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers)
-            attributes.alternateTextures[altTex.slotID] = PGTypes::TextureSet {
-                altTex.slots[0],
-                altTex.slots[1],
-                altTex.slots[2],
-                altTex.slots[3],
-                altTex.slots[4],
-                altTex.slots[5],
-                altTex.slots[6],
-                altTex.slots[7],
-            };
-            // NOLINTEND(cppcoreguidelines-avoid-magic-numbers)
+    return result;
+}
+
+auto PGPlugin::getAllModelUses()
+    -> std::vector<std::tuple<std::wstring, PGMeshPermutationTracker::FormKey, PGPlugin::MeshUseAttributes>>
+{
+    vector<tuple<wstring, PGMeshPermutationTracker::FormKey, MeshUseAttributes>> result;
+
+    if (!s_initialized) {
+        return {};
+    }
+
+    auto modelUses = PGMutagenWrapper::libEnumerateAllModelUses();
+    // Same intra-mesh ordering as getModelUses(), plus meshFile as the primary key so entries
+    // naturally group together when the caller iterates the flat result.
+    std::ranges::sort(modelUses, [](const PGMutagenWrapper::ModelUse& a, const PGMutagenWrapper::ModelUse& b) -> bool {
+        if (a.meshFile != b.meshFile) {
+            return a.meshFile < b.meshFile;
         }
+        const bool aHasAltTex = !a.alternateTextures.empty();
+        const bool bHasAltTex = !b.alternateTextures.empty();
+        if (aHasAltTex != bHasAltTex) {
+            return !aHasAltTex; // no alternate textures first
+        }
+        if (a.isWeighted != b.isWeighted) {
+            return a.isWeighted > b.isWeighted; // weighted first
+        }
+        if (a.modName != b.modName) {
+            return a.modName < b.modName; // alphabetical mod name
+        }
+        if (a.formID != b.formID) {
+            return a.formID < b.formID; // ascending formid
+        }
+        return a.subModel < b.subModel; // alphabetical submodel
+    });
 
-        result.emplace_back(formKey, attributes);
+    result.reserve(modelUses.size());
+    for (const auto& modelUse : modelUses) {
+        auto [formKey, attributes] = convertModelUse(modelUse);
+        result.emplace_back(modelUse.meshFile, std::move(formKey), std::move(attributes));
     }
 
     return result;
@@ -196,33 +248,4 @@ void PGPlugin::savePlugin(const filesystem::path& outputDir,
 {
     PGMutagenWrapper::libFinalize(outputDir, static_cast<int>(esmMode));
     // TODO add to generated files
-}
-
-auto PGPlugin::getPluginPathFromDataPath(const filesystem::path& dataPath) -> filesystem::path
-{
-    static const std::filesystem::path meshesPrefix = "meshes";
-    static const std::filesystem::path texturesPrefix = "textures";
-
-    auto relativePath = dataPath;
-
-    // Check if the first component is "meshes" or "textures"
-    if (!dataPath.empty()) {
-        auto iter = dataPath.begin();
-        if (*iter == meshesPrefix) {
-            // Erase the first component
-            relativePath = std::filesystem::path {};
-            for (++iter; iter != dataPath.end(); ++iter) {
-                relativePath /= *iter;
-            }
-        } else if (*iter == texturesPrefix) {
-            relativePath = std::filesystem::path {};
-            for (++iter; iter != dataPath.end(); ++iter) {
-                relativePath /= *iter;
-            }
-        } else {
-            return dataPath;
-        }
-    }
-
-    return relativePath;
 }

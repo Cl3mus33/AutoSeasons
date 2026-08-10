@@ -81,14 +81,18 @@ add_custom_command(TARGET ${EXE_NAME} POST_BUILD
 )
 
 #
-# Translations (GUI localization - ASLocale reads these from a "translations" folder next to the exe)
+# Translations (GUI localization - ASLocale reads these from an "AutoSeasons_translations" folder
+# next to the exe. Namespaced with the same "AutoSeasons_" prefix as AutoSeasons_cshaders above -
+# PGPatcher, built from the same shared codebase, ships its own "translations" folder at the same
+# relative path, and since both tools get installed as MO2 mods, an unprefixed name would collide
+# and silently load whichever tool's translations win the MO2 conflict.)
 #
 add_custom_command(TARGET ${EXE_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E rm -rf $<TARGET_FILE_DIR:${EXE_NAME}>/translations
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${EXE_NAME}>/translations
+    COMMAND ${CMAKE_COMMAND} -E rm -rf $<TARGET_FILE_DIR:${EXE_NAME}>/AutoSeasons_translations
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${EXE_NAME}>/AutoSeasons_translations
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/translations
-        $<TARGET_FILE_DIR:${EXE_NAME}>/translations
+        ${CMAKE_CURRENT_SOURCE_DIR}/AutoSeasons_translations
+        $<TARGET_FILE_DIR:${EXE_NAME}>/AutoSeasons_translations
 )
 
 #

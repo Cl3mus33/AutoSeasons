@@ -17,6 +17,9 @@ class LauncherWindow : public wxDialog {
 public:
     /** ShowModal result indicating the launcher should be rebuilt (e.g. after a language change) */
     constexpr static int RESULT_RELAUNCH = wxID_HIGHEST + 1;
+    /** ShowModal result indicating the whole process should be restarted (after a theme change -
+     * wx's MSW dark mode support can't be reliably re-toggled within one already-running process) */
+    constexpr static int RESULT_RESTART = wxID_HIGHEST + 2;
 
     LauncherWindow(const ASParams& initParams, std::filesystem::path exePath);
 
@@ -27,6 +30,7 @@ private:
     std::vector<ASLocale::Language> m_languages;
 
     wxChoice* m_languageChoice;
+    wxChoice* m_themeChoice;
     wxTextCtrl* m_gameLocationTextbox;
     wxTextCtrl* m_outputLocationTextbox;
     wxChoice* m_gameTypeChoice;
@@ -35,6 +39,7 @@ private:
     wxButton* m_okButton;
 
     void onLanguageChanged(wxCommandEvent& event);
+    void onThemeChanged(wxCommandEvent& event);
     void onBrowseGameLocation(wxCommandEvent& event);
     void onBrowseOutputLocation(wxCommandEvent& event);
     void onOkButtonPressed(wxCommandEvent& event);

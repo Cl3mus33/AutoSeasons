@@ -19,6 +19,10 @@ constexpr int GAUGE_HEIGHT = 18;
 constexpr int PULSE_INTERVAL_MS = 100;
 constexpr int WRAP_WIDTH = 340;
 
+// Matches LauncherWindow's own accent colors, so the two windows read as one identity.
+const wxColour ACCENT(56, 142, 60);
+const wxColour ACCENT_TEXT(255, 255, 255);
+
 // Strips spdlog's "[timestamp] [level] " prefix (two bracketed groups), leaving just the
 // human-readable message - the raw prefixed line is too noisy for the compact status label
 // (it still shows up in full in the "Show details" log panel).
@@ -104,6 +108,8 @@ ProgressWindow::ProgressWindow(const ASParams& params, const filesystem::path& e
     m_detailsPane->Bind(wxEVT_COLLAPSIBLEPANE_CHANGED, &ProgressWindow::onDetailsPaneChanged, this);
 
     m_closeButton = new wxButton(this, wxID_ANY, ASTr("progress.working", "Working..."));
+    m_closeButton->SetBackgroundColour(ACCENT);
+    m_closeButton->SetForegroundColour(ACCENT_TEXT);
     m_closeButton->Enable(false);
     m_closeButton->Bind(wxEVT_BUTTON, &ProgressWindow::onCloseButtonPressed, this);
 
@@ -139,6 +145,15 @@ ProgressWindow::ProgressWindow(const ASParams& params, const filesystem::path& e
             const string message = e.what();
             wxTheApp->CallAfter(
                 [this, message]() -> void { appendLog("\n[ERROR] " + wxString::FromUTF8(message) + "\n"); });
+        } catch (...) {
+            // Anything not deriving from std::exception (e.g. a raw type thrown from a dependency)
+            // would otherwise escape this thread function uncaught, which calls std::terminate()
+            // and kills the whole app with no message at all - the console is hidden in GUI mode,
+            // so that would look exactly like an unexplained crash rather than a reported error.
+            success = false;
+            wxTheApp->CallAfter([this]() -> void {
+                appendLog("\n[ERROR] An unexpected error occurred - see AutoSeasons.log for details.\n");
+            });
         }
 
         wxTheApp->CallAfter([this, success]() -> void { onWorkerFinished(success); });
@@ -176,6 +191,11 @@ void ProgressWindow::appendLog(const wxString& text)
 
     m_statusText->SetLabel(message);
     m_statusText->Wrap(WRAP_WIDTH);
+    // Wrap() can change how many lines the label needs (e.g. a longer translated status string
+    // wrapping to 2 lines instead of 1) - without re-running the sizer, the gauge below keeps its
+    // old position and visually overlaps the now-taller text instead of being pushed down.
+    Layout();
+    GetSizer()->Fit(this);
 
     // Some log lines already carry a "[N%]" progress figure (e.g. "Loading NIFs Progress:
     // 9925/17722 [56%]") - when present, drive the gauge with it instead of just pulsing.
@@ -212,6 +232,10 @@ void ProgressWindow::onWorkerFinished(bool success)
                 "Generation complete. Don't forget to enable AutoSeasons.esp in your mod manager's "
                 "plugin list if it isn't already active."),
             ASTr("progress.completion.title", "AutoSeasons"), wxOK | wxICON_INFORMATION, this);
+        // Dismissing this message box was previously a dead end - the dialog stayed open behind
+        // it, requiring a second click on "Done - Close" for no reason. OK here means the same
+        // thing as that button, so just close.
+        EndModal(wxID_OK);
     }
 }
 

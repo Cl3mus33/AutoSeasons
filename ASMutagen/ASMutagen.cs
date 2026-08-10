@@ -39,14 +39,16 @@ public static class ExceptionHandler
     [UnmanagedCallersOnly(EntryPoint = "GetLastException", CallConvs = [typeof(CallConvCdecl)])]
     public static unsafe void GetLastException([DNNE.C99Type("wchar_t**")] IntPtr* errorMessagePtr)
     {
-        string? errorMessage = LastExceptionMessage ?? string.Empty;
-
         if (LastExceptionMessage.IsNullOrEmpty())
         {
             return;
         }
 
-        *errorMessagePtr = Marshal.StringToHGlobalUni(errorMessage);
+        *errorMessagePtr = Marshal.StringToHGlobalUni(LastExceptionMessage);
+        // Reset once consumed - otherwise every call after the first exception (even a since-
+        // recovered one) would keep reporting it as if it had just happened, permanently
+        // poisoning libThrowExceptionIfExists() for the rest of the process.
+        LastExceptionMessage = null;
     }
 }
 
@@ -57,6 +59,14 @@ public static class MessageHandler
     // structures to keep track of warning and error messages to avoid duplicates
     private static readonly HashSet<string> WarningMessages = [];
     private static readonly HashSet<string> ErrorMessages = [];
+
+    // Called from ResetPatchingState() - without this, a legitimate rerun in the same process
+    // would silently suppress warnings/errors already logged once in a previous run.
+    public static void ResetDedupState()
+    {
+        WarningMessages.Clear();
+        ErrorMessages.Clear();
+    }
 
     public static void Log(string message, int level = 0)
     {
@@ -131,6 +141,10 @@ public class ASMutagen
     private static SkyrimMod? SeasonsMod;
     private static IGameEnvironment<ISkyrimMod, ISkyrimModGetter>? Env;
     private static Dictionary<string, List<Tuple<FormKey, string>>> ModelUses = [];
+    // Built once in PopulateObjs(), keyed by lowercased EditorID - avoids FindGrassByEditorID()
+    // doing a fresh O(N) WinningOverrides() scan per call (it's invoked once per candidate grass
+    // record from the C++ side, so an unindexed scan is effectively O(N^2) over the grass list).
+    private static Dictionary<string, IGrassGetter> GrassByEditorID = [];
     private static Dictionary<string[], ITextureSet> NewTextureSets = new(new StructuralArrayComparer());
     private static SortedSet<uint> allocatedFormIDs = [];
     private static uint lastUsedFormID = 1;
@@ -376,6 +390,18 @@ public class ASMutagen
                 }
             }
 
+            foreach (var grass in Env.LoadOrder.PriorityOrder.Grass().WinningOverrides())
+            {
+                if (grass.EditorID.IsNullOrEmpty())
+                {
+                    continue;
+                }
+
+                // Last writer wins on a duplicate EditorID (shouldn't happen in a well-formed load
+                // order, but harmless either way) - matches indexer assignment semantics elsewhere.
+                GrassByEditorID[grass.EditorID.ToLowerInvariant()] = grass;
+            }
+
             // Capture baseline immediately after PopulateObjs so reruns can reset to this state.
             InitialAllocatedFormIDs = [.. allocatedFormIDs];
             InitialLastUsedFormID = lastUsedFormID;
@@ -402,6 +428,7 @@ public class ASMutagen
 
             SeasonsMod = new SkyrimMod(ModKey.FromFileName("AutoSeasons.esp"), GameType);
             NewTextureSets = new Dictionary<string[], ITextureSet>(new StructuralArrayComparer());
+            MessageHandler.ResetDedupState();
         }
         catch (Exception ex)
         {
@@ -462,6 +489,130 @@ public class ASMutagen
         }
     }
 
+    // Resolves one (formKey, subModel) model use and encodes it as a ModelUse FlatBuffer offset,
+    // shared by GetModelUses (per-mesh query) and EnumerateAllModelUses (whole-load-order dump).
+    // allowedTypes, when given, short-circuits BEFORE the AlternateTextures/Material resolution
+    // below (the expensive part) for record types the caller doesn't care about - important for
+    // EnumerateAllModelUses, since ModelUses also holds armor/weapon/container/etc. uses that
+    // AutoSeasons never needs.
+    private static Offset<ASMutagenBuffers.ModelUse>? BuildModelUseOffset(
+        FlatBufferBuilder builder, FormKey formKey, string subModel, string nifName, HashSet<string>? allowedTypes = null)
+    {
+        // Try to resolve the model record and submodel
+        if (!Env!.LinkCache.TryResolve<IMajorRecordGetter>(formKey, out var modelRec) ||
+            GetModelElemBySubModel(modelRec, subModel) is not { } matchedModel)
+        {
+            MessageHandler.Log($"Failed to resolve model record: {GetRecordDesc(formKey)}", 4);
+            return null;
+        }
+
+        string recType = GetXEditTypeFromType(modelRec);
+        if (allowedTypes is not null && !allowedTypes.Contains(recType))
+        {
+            return null;
+        }
+
+        var altTexVector = new VectorOffset();
+        if (matchedModel.AlternateTextures is not null)
+        {
+            var altTexOffsets = new List<Offset<ASMutagenBuffers.AlternateTexture>>();
+
+            for (int j = 0; j < matchedModel.AlternateTextures.Count; j++)
+            {
+                var altTexIdx = matchedModel.AlternateTextures[j].Index;
+                var newTXST = matchedModel.AlternateTextures[j].NewTexture;
+
+                var textureSetOffsets = new List<Offset<ASMutagenBuffers.TextureSet>>();
+
+                // find newTXST record
+                var textures = new string[8];
+                if (Env.LinkCache.TryResolve<ITextureSetGetter>(newTXST.FormKey, out var newTXSTRec))
+                {
+                    // The 8 strings in textureset are:
+                    // newTXSTRec.Texture1 - Texture8
+                    textures = GetTextureSet(newTXSTRec);
+                    for (int k = 0; k < 8; k++)
+                    {
+                        if (textures[k].IsNullOrEmpty())
+                        {
+                            continue;
+                        }
+
+                        textures[k] = AddPrefixIfNotExists("textures\\", textures[k]);
+                    }
+                }
+                else
+                {
+                    // the 8 strings in the textureset should exist but all be empty
+                    textures = [.. Enumerable.Repeat(string.Empty, 8)];
+                }
+
+                // Build the TextureSet
+                var textureSetVec = ASMutagenBuffers.TextureSet.CreateTexturesVector(
+                    builder,
+                    [.. textures.Select(s => builder.CreateString(s))]
+                );
+
+                ASMutagenBuffers.TextureSet.StartTextureSet(builder);
+                ASMutagenBuffers.TextureSet.AddTextures(builder, textureSetVec);
+                var textureSetOffset = ASMutagenBuffers.TextureSet.EndTextureSet(builder);
+
+                // Build the AlternateTexture (slots now holds a single TextureSet, not a vector)
+                ASMutagenBuffers.AlternateTexture.StartAlternateTexture(builder);
+                ASMutagenBuffers.AlternateTexture.AddSlotId(builder, altTexIdx);
+                // add slot_id_new if you have a value for it
+                ASMutagenBuffers.AlternateTexture.AddSlots(builder, textureSetOffset);
+                var altTexOffset = ASMutagenBuffers.AlternateTexture.EndAlternateTexture(builder);
+
+                altTexOffsets.Add(altTexOffset);
+            }
+
+            altTexVector = ASMutagenBuffers.ModelUse.CreateAlternateTexturesVector(builder, [.. altTexOffsets]);
+        }
+        else
+        {
+            altTexVector = ASMutagenBuffers.ModelUse.CreateAlternateTexturesVector(builder, []);
+        }
+
+        // check if this is IStaticGetter for materials
+        bool is_singlePass = false;
+        if (modelRec is IStaticGetter staticRec && Env.LinkCache.TryResolve<IMaterialObjectGetter>(staticRec.Material.FormKey, out var materialRec))
+        {
+            is_singlePass = (materialRec.Flags & MaterialObject.Flag.SinglePass) != 0;
+        }
+
+        bool is_weighted = false;
+        if (modelRec is IArmorAddonGetter armorAddonRec)
+        {
+            if (((subModel == "MALE" || subModel == "1STMALE") && armorAddonRec.WeightSliderEnabled.Male) || ((subModel == "FEMALE" || subModel == "1STFEMALE") && armorAddonRec.WeightSliderEnabled.Female))
+            {
+                is_weighted = true;
+            }
+        }
+
+        // Record flag 24
+        bool is_ignored = (modelRec.MajorRecordFlagsRaw & 0x01000000) != 0;
+
+        var modNameOffset = builder.CreateString(formKey.ModKey.FileName);
+        var subModelOffset = builder.CreateString(subModel);
+        var modelNameOffset = builder.CreateString(nifName);
+        var recTypeOffset = builder.CreateString(recType);
+        var editorIdOffset = builder.CreateString(modelRec.EditorID ?? string.Empty);
+
+        ASMutagenBuffers.ModelUse.StartModelUse(builder);
+        ASMutagenBuffers.ModelUse.AddModName(builder, modNameOffset);
+        ASMutagenBuffers.ModelUse.AddFormId(builder, formKey.ID);
+        ASMutagenBuffers.ModelUse.AddSubModel(builder, subModelOffset);
+        ASMutagenBuffers.ModelUse.AddIsWeighted(builder, is_weighted);
+        ASMutagenBuffers.ModelUse.AddMeshFile(builder, modelNameOffset);
+        ASMutagenBuffers.ModelUse.AddSinglepassMato(builder, is_singlePass);
+        ASMutagenBuffers.ModelUse.AddIsIgnored(builder, is_ignored);
+        ASMutagenBuffers.ModelUse.AddType(builder, recTypeOffset);
+        ASMutagenBuffers.ModelUse.AddAlternateTextures(builder, altTexVector);
+        ASMutagenBuffers.ModelUse.AddEditorId(builder, editorIdOffset);
+        return ASMutagenBuffers.ModelUse.EndModelUse(builder);
+    }
+
     [UnmanagedCallersOnly(EntryPoint = "GetModelUses", CallConvs = [typeof(CallConvCdecl)])]
     public static unsafe void GetModelUses(
       [DNNE.C99Type("const wchar_t*")] IntPtr modelPathPtr,
@@ -498,120 +649,10 @@ public class ASMutagen
             // loop through each use
             for (int i = 0; i < modelRecUsesList.Count; i++)
             {
-                var formKey = modelRecUsesList[i].Item1;
-                var subModel = modelRecUsesList[i].Item2;
-
-                // Try to resolve the model record and submodel
-                if (!Env.LinkCache.TryResolve<IMajorRecordGetter>(formKey, out var modelRec) ||
-                    GetModelElemBySubModel(modelRec, subModel) is not { } matchedModel)
+                if (BuildModelUseOffset(builder, modelRecUsesList[i].Item1, modelRecUsesList[i].Item2, nifName) is { } offset)
                 {
-                    MessageHandler.Log($"Failed to resolve model record: {GetRecordDesc(formKey)}", 4);
-                    continue;
+                    modelUseOffsets.Add(offset);
                 }
-
-                var altTexVector = new VectorOffset();
-                if (matchedModel.AlternateTextures is not null)
-                {
-                    var altTexOffsets = new List<Offset<ASMutagenBuffers.AlternateTexture>>();
-
-                    for (int j = 0; j < matchedModel.AlternateTextures.Count; j++)
-                    {
-                        var altTexIdx = matchedModel.AlternateTextures[j].Index;
-                        var newTXST = matchedModel.AlternateTextures[j].NewTexture;
-
-                        var textureSetOffsets = new List<Offset<ASMutagenBuffers.TextureSet>>();
-
-                        // find newTXST record
-                        var textures = new string[8];
-                        if (Env.LinkCache.TryResolve<ITextureSetGetter>(newTXST.FormKey, out var newTXSTRec))
-                        {
-                            // The 8 strings in textureset are:
-                            // newTXSTRec.Texture1 - Texture8
-                            textures = GetTextureSet(newTXSTRec);
-                            for (int k = 0; k < 8; k++)
-                            {
-                                if (textures[k].IsNullOrEmpty())
-                                {
-                                    continue;
-                                }
-
-                                textures[k] = AddPrefixIfNotExists("textures\\", textures[k]);
-                            }
-                        }
-                        else
-                        {
-                            // the 8 strings in the textureset should exist but all be empty
-                            textures = [.. Enumerable.Repeat(string.Empty, 8)];
-                        }
-
-                        // Build the TextureSet
-                        var textureSetVec = ASMutagenBuffers.TextureSet.CreateTexturesVector(
-                            builder,
-                            [.. textures.Select(s => builder.CreateString(s))]
-                        );
-
-                        ASMutagenBuffers.TextureSet.StartTextureSet(builder);
-                        ASMutagenBuffers.TextureSet.AddTextures(builder, textureSetVec);
-                        var textureSetOffset = ASMutagenBuffers.TextureSet.EndTextureSet(builder);
-
-                        // Build the AlternateTexture (slots now holds a single TextureSet, not a vector)
-                        ASMutagenBuffers.AlternateTexture.StartAlternateTexture(builder);
-                        ASMutagenBuffers.AlternateTexture.AddSlotId(builder, altTexIdx);
-                        // add slot_id_new if you have a value for it
-                        ASMutagenBuffers.AlternateTexture.AddSlots(builder, textureSetOffset);
-                        var altTexOffset = ASMutagenBuffers.AlternateTexture.EndAlternateTexture(builder);
-
-                        altTexOffsets.Add(altTexOffset);
-                    }
-
-                    altTexVector = ASMutagenBuffers.ModelUse.CreateAlternateTexturesVector(builder, [.. altTexOffsets]);
-                }
-                else
-                {
-                    altTexVector = ASMutagenBuffers.ModelUse.CreateAlternateTexturesVector(builder, []);
-                }
-
-                // check if this is IStaticGetter for materials
-                bool is_singlePass = false;
-                if (modelRec is IStaticGetter staticRec && Env.LinkCache.TryResolve<IMaterialObjectGetter>(staticRec.Material.FormKey, out var materialRec))
-                {
-                    is_singlePass = (materialRec.Flags & MaterialObject.Flag.SinglePass) != 0;
-                }
-
-                bool is_weighted = false;
-                if (modelRec is IArmorAddonGetter armorAddonRec)
-                {
-                    if (((subModel == "MALE" || subModel == "1STMALE") && armorAddonRec.WeightSliderEnabled.Male) || ((subModel == "FEMALE" || subModel == "1STFEMALE") && armorAddonRec.WeightSliderEnabled.Female))
-                    {
-                        is_weighted = true;
-                    }
-                }
-
-                // Record flag 24
-                bool is_ignored = (modelRec.MajorRecordFlagsRaw & 0x01000000) != 0;
-
-                string recType = GetXEditTypeFromType(modelRec);
-
-                var modNameOffset = builder.CreateString(formKey.ModKey.FileName);
-                var subModelOffset = builder.CreateString(subModel);
-                var modelNameOffset = builder.CreateString(nifName);
-                var recTypeOffset = builder.CreateString(recType);
-                var editorIdOffset = builder.CreateString(modelRec.EditorID ?? string.Empty);
-
-                ASMutagenBuffers.ModelUse.StartModelUse(builder);
-                ASMutagenBuffers.ModelUse.AddModName(builder, modNameOffset);
-                ASMutagenBuffers.ModelUse.AddFormId(builder, formKey.ID);
-                ASMutagenBuffers.ModelUse.AddSubModel(builder, subModelOffset);
-                ASMutagenBuffers.ModelUse.AddIsWeighted(builder, is_weighted);
-                ASMutagenBuffers.ModelUse.AddMeshFile(builder, modelNameOffset);
-                ASMutagenBuffers.ModelUse.AddSinglepassMato(builder, is_singlePass);
-                ASMutagenBuffers.ModelUse.AddIsIgnored(builder, is_ignored);
-                ASMutagenBuffers.ModelUse.AddType(builder, recTypeOffset);
-                ASMutagenBuffers.ModelUse.AddAlternateTextures(builder, altTexVector);
-                ASMutagenBuffers.ModelUse.AddEditorId(builder, editorIdOffset);
-                var modelUseOffset = ASMutagenBuffers.ModelUse.EndModelUse(builder);
-
-                modelUseOffsets.Add(modelUseOffset);
             }
 
             var usesVector = ASMutagenBuffers.ModelUses.CreateUsesVector(builder, [.. modelUseOffsets]);
@@ -624,6 +665,63 @@ public class ASMutagen
             *length = (uint)byteArray.Length;
 
             // Allocate memory for C++ side
+            *bufferPtr = (byte*)Marshal.AllocHGlobal(byteArray.Length);
+            Marshal.Copy(byteArray, 0, (IntPtr)(*bufferPtr), byteArray.Length);
+        }
+        catch (Exception ex)
+        {
+            ExceptionHandler.SetLastException(ex);
+        }
+    }
+
+    private static readonly HashSet<string> SupportedSeasonRecordTypes = ["STAT", "ACTI", "FURN", "MSTT", "TREE", "FLOR"];
+
+    // Whole-load-order counterpart to GetModelUses() - returns every model use of a record type
+    // SeasonPatcher's STAT-family loop cares about, across every mesh, in one call. Unlike
+    // GetModelUses(), doesn't require the caller to already know which mesh paths exist on disk -
+    // ModelUses is built purely from plugin data (see PopulateObjs()), so a record with its own
+    // explicit AlternateTextures override is returned here even when its Model's mesh file can't
+    // be found anywhere in the merged Data view.
+    [UnmanagedCallersOnly(EntryPoint = "EnumerateAllModelUses", CallConvs = [typeof(CallConvCdecl)])]
+    public static unsafe void EnumerateAllModelUses(
+      [DNNE.C99Type("unsigned int*")] uint* length,
+      [DNNE.C99Type("uint8_t**")] byte** bufferPtr)
+    {
+        try
+        {
+            if (Env is null)
+            {
+                throw new Exception("Initialize must be called before EnumerateAllModelUses");
+            }
+
+            if (length is null)
+            {
+                throw new Exception("length pointer is null");
+            }
+
+            var builder = new FlatBufferBuilder(1 << 20); // whole-load-order payload - avoid repeated growth reallocs
+            var modelUseOffsets = new List<Offset<ASMutagenBuffers.ModelUse>>();
+
+            foreach (var (nifName, usesList) in ModelUses)
+            {
+                foreach (var (formKey, subModel) in usesList)
+                {
+                    if (BuildModelUseOffset(builder, formKey, subModel, nifName, SupportedSeasonRecordTypes) is { } offset)
+                    {
+                        modelUseOffsets.Add(offset);
+                    }
+                }
+            }
+
+            var usesVector = ASMutagenBuffers.ModelUses.CreateUsesVector(builder, [.. modelUseOffsets]);
+            ASMutagenBuffers.ModelUses.StartModelUses(builder);
+            ASMutagenBuffers.ModelUses.AddUses(builder, usesVector);
+            var rootOffset = ASMutagenBuffers.ModelUses.EndModelUses(builder);
+            builder.Finish(rootOffset.Value);
+
+            var byteArray = builder.SizedByteArray();
+            *length = (uint)byteArray.Length;
+
             *bufferPtr = (byte*)Marshal.AllocHGlobal(byteArray.Length);
             Marshal.Copy(byteArray, 0, (IntPtr)(*bufferPtr), byteArray.Length);
         }
@@ -659,6 +757,7 @@ public class ASMutagen
             foreach (var ltex in Env.LoadOrder.PriorityOrder.LandscapeTexture().WinningOverrides())
             {
                 string[] slots = [.. Enumerable.Repeat(string.Empty, 8)];
+                string txstEditorId = string.Empty;
                 if (ltex.TextureSet.TryResolve(Env.LinkCache, out var txst))
                 {
                     slots = GetTextureSet(txst);
@@ -669,10 +768,12 @@ public class ASMutagen
                             slots[k] = AddPrefixIfNotExists("textures\\", slots[k]);
                         }
                     }
+                    txstEditorId = txst.EditorID ?? string.Empty;
                 }
 
                 var modNameOffset = builder.CreateString(ltex.FormKey.ModKey.FileName);
                 var editorIdOffset = builder.CreateString(ltex.EditorID ?? string.Empty);
+                var txstEditorIdOffset = builder.CreateString(txstEditorId);
                 var slotsVec = ASMutagenBuffers.TextureSet.CreateTexturesVector(
                     builder,
                     [.. slots.Select(s => builder.CreateString(s))]
@@ -697,6 +798,7 @@ public class ASMutagen
                 ASMutagenBuffers.LandscapeTextureEntry.AddFormId(builder, ltex.FormKey.ID);
                 ASMutagenBuffers.LandscapeTextureEntry.AddSlots(builder, slotsOffset);
                 ASMutagenBuffers.LandscapeTextureEntry.AddEditorId(builder, editorIdOffset);
+                ASMutagenBuffers.LandscapeTextureEntry.AddTxstEditorId(builder, txstEditorIdOffset);
                 ASMutagenBuffers.LandscapeTextureEntry.AddGrasses(builder, grassesVec);
                 entryOffsets.Add(ASMutagenBuffers.LandscapeTextureEntry.EndLandscapeTextureEntry(builder));
             }
@@ -748,6 +850,85 @@ public class ASMutagen
             }
 
             *outMeshPathPtr = Marshal.StringToHGlobalUni(AddPrefixIfNotExists("meshes\\", grass.Model.File.GivenPath));
+        }
+        catch (Exception ex)
+        {
+            ExceptionHandler.SetLastException(ex);
+        }
+    }
+
+    // Looks up a GRAS record's own EditorID - used to check whether a mod author already shipped
+    // a dedicated seasonal GRAS record of their own (e.g. "AegopodiumDrJ_WIN") before AutoSeasons
+    // considers duplicating one itself from a mesh file.
+    [UnmanagedCallersOnly(EntryPoint = "GetGrassEditorID", CallConvs = [typeof(CallConvCdecl)])]
+    public static unsafe void GetGrassEditorID(
+      [DNNE.C99Type("const wchar_t*")] IntPtr modNamePtr,
+      uint formId,
+      [DNNE.C99Type("wchar_t**")] IntPtr* outEditorIdPtr)
+    {
+        try
+        {
+            if (Env is null)
+            {
+                throw new Exception("Initialize must be called before GetGrassEditorID");
+            }
+
+            if (outEditorIdPtr is null)
+            {
+                throw new Exception("outEditorIdPtr is null");
+            }
+
+            string modName = Marshal.PtrToStringUni(modNamePtr) ?? string.Empty;
+            var formKey = new FormKey(ModKey.FromFileName(modName), formId);
+
+            if (!Env.LinkCache.TryResolve<IGrassGetter>(formKey, out var grass) || grass.EditorID.IsNullOrEmpty())
+            {
+                return;
+            }
+
+            *outEditorIdPtr = Marshal.StringToHGlobalUni(grass.EditorID);
+        }
+        catch (Exception ex)
+        {
+            ExceptionHandler.SetLastException(ex);
+        }
+    }
+
+    // Looks up a GRAS record by its own EditorID (exact match, case-insensitive) - used to find a
+    // mod author's own pre-made seasonal grass record before AutoSeasons considers duplicating one
+    // itself, so it doesn't create a redundant duplicate on top of a dedicated record that already
+    // exists (e.g. a "_WIN" record a grass mod ships itself, alongside its own "_WIN" mesh).
+    [UnmanagedCallersOnly(EntryPoint = "FindGrassByEditorID", CallConvs = [typeof(CallConvCdecl)])]
+    public static unsafe void FindGrassByEditorID(
+      [DNNE.C99Type("const wchar_t*")] IntPtr editorIdPtr,
+      [DNNE.C99Type("wchar_t**")] IntPtr* outModNamePtr,
+      [DNNE.C99Type("unsigned int*")] uint* outFormId)
+    {
+        try
+        {
+            if (Env is null)
+            {
+                throw new Exception("Initialize must be called before FindGrassByEditorID");
+            }
+
+            if (outModNamePtr is null || outFormId is null)
+            {
+                throw new Exception("output pointer is null");
+            }
+
+            string editorId = Marshal.PtrToStringUni(editorIdPtr) ?? string.Empty;
+            if (editorId.IsNullOrEmpty())
+            {
+                return;
+            }
+
+            if (!GrassByEditorID.TryGetValue(editorId.ToLowerInvariant(), out var grass))
+            {
+                return;
+            }
+
+            *outModNamePtr = Marshal.StringToHGlobalUni(grass.FormKey.ModKey.FileName);
+            *outFormId = grass.FormKey.ID;
         }
         catch (Exception ex)
         {
@@ -892,6 +1073,76 @@ public class ASMutagen
         }
     }
 
+    // Community Shaders reads a TextureSet with the exact EditorID "DefaultPBRLand" directly as
+    // its own default (no-LTEX-assigned) PBR terrain fallback - a completely separate convention
+    // from TerrainHelper.esp's "LandscapeDefault" above, which only matters for the old
+    // vanilla-parallax hack and is irrelevant to PBR terrain. Many PBR landscape mods already ship
+    // their own fully-authored "DefaultPBRLand" record, in which case this is a no-op - only
+    // creates one (in AutoSeasons.esp, as a brand new record, never an override) when no mod
+    // provides it at all, using the PBR dirt02-equivalent slots passed in.
+    [UnmanagedCallersOnly(EntryPoint = "EnsureDefaultPBRLand", CallConvs = [typeof(CallConvCdecl)])]
+    public static unsafe void EnsureDefaultPBRLand(
+      [DNNE.C99Type("const unsigned int")] uint length,
+      [DNNE.C99Type("const uint8_t*")] byte* bufferPtr)
+    {
+        try
+        {
+            if (Env is null || SeasonsMod is null)
+            {
+                throw new Exception("Initialize must be called before EnsureDefaultPBRLand");
+            }
+
+            var existing = Env.LoadOrder.PriorityOrder.TextureSet().WinningOverrides()
+                .FirstOrDefault(t => t.EditorID == "DefaultPBRLand");
+            if (existing is not null)
+            {
+                // Some mod already provides its own - never override or duplicate it.
+                return;
+            }
+
+            if (length == 0 || bufferPtr == null)
+            {
+                return;
+            }
+
+            Span<byte> bufferSpan = new(bufferPtr, (int)length);
+            var buffer = new ByteBuffer(bufferSpan.ToArray());
+            var slotsTable = ASMutagenBuffers.TextureSet.GetRootAsTextureSet(buffer);
+            if (slotsTable.TexturesLength != 8)
+            {
+                return;
+            }
+
+            string[] slots = new string[8];
+            for (int k = 0; k < 8; k++)
+            {
+                slots[k] = slotsTable.Textures(k) ?? string.Empty;
+            }
+
+            var newTXSTFormKey = new FormKey(SeasonsMod.ModKey, GetLowestAvailableFormID());
+            var newTXST = new TextureSet(newTXSTFormKey, Env.GameRelease.ToSkyrimRelease())
+            {
+                EditorID = "DefaultPBRLand",
+                Diffuse = slots[0].IsNullOrEmpty() ? null : RemovePrefixIfExists("textures\\", slots[0]),
+                NormalOrGloss = slots[1].IsNullOrEmpty() ? null : RemovePrefixIfExists("textures\\", slots[1]),
+                GlowOrDetailMap = slots[2].IsNullOrEmpty() ? null : RemovePrefixIfExists("textures\\", slots[2]),
+                Height = slots[3].IsNullOrEmpty() ? null : RemovePrefixIfExists("textures\\", slots[3]),
+                Environment = slots[4].IsNullOrEmpty() ? null : RemovePrefixIfExists("textures\\", slots[4]),
+                EnvironmentMaskOrSubsurfaceTint = slots[5].IsNullOrEmpty() ? null : RemovePrefixIfExists("textures\\", slots[5]),
+                Multilayer = slots[6].IsNullOrEmpty() ? null : RemovePrefixIfExists("textures\\", slots[6]),
+                BacklightMaskOrSpecular = slots[7].IsNullOrEmpty() ? null : RemovePrefixIfExists("textures\\", slots[7]),
+            };
+
+            allocatedFormIDs.Add(newTXSTFormKey.ID);
+            lastUsedFormID = newTXSTFormKey.ID;
+            SeasonsMod.TextureSets.Add(newTXST);
+        }
+        catch (Exception ex)
+        {
+            ExceptionHandler.SetLastException(ex);
+        }
+    }
+
     // Duplicates existing model-referencing records (currently STAT only) into new records
     // pointing at a seasonal texture set, leaving the originals untouched. Used to build
     // the base/swap FormID pairs consumed by Seasons of Skyrim's Data/Seasons/*.ini files.
@@ -965,10 +1216,20 @@ public class ASMutagen
 
                             var txstFormKey = new FormKey(SeasonsMod.ModKey, GetLowestAvailableFormID());
                             var diffuseTex = slots[0].IsNullOrEmpty() ? "" : Path.GetFileNameWithoutExtension(slots[0]);
-                            // Suffix LTEX-sourced texture sets so they're distinguishable from STAT-sourced ones in xEdit.
+                            // LTEX: match the vanilla/ESP naming convention (base TXST's own EditorID,
+                            // e.g. "LandscapeDirt02", plus the season suffix) whenever the base TXST has
+                            // an EditorID to build from - Community Shaders' PBRTextureSets lookup matches
+                            // by TXST EditorID, so this has to line up with what SeasonPatcher.cpp names
+                            // the cloned config file. Falls back to the diffuse-filename-based name
+                            // (suffixed so it's distinguishable from STAT-sourced ones in xEdit) when the
+                            // base TXST has no EditorID.
                             var newTXSTEDID = diffuseTex.IsNullOrEmpty()
                                 ? ("TXST" + txstFormKey.ID.ToString("X6"))
-                                : (req.Type == "LTEX" ? diffuseTex + "_ltex" : diffuseTex);
+                                : (req.Type == "LTEX"
+                                    ? (req.BaseTxstEditorId.IsNullOrEmpty()
+                                        ? diffuseTex + "_ltex"
+                                        : req.BaseTxstEditorId + "_" + req.SeasonSuffix)
+                                    : diffuseTex);
 
                             var createdTXST = new TextureSet(txstFormKey, Env.GameRelease.ToSkyrimRelease())
                             {

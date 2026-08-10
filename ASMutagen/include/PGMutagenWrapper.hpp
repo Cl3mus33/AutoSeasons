@@ -3,6 +3,7 @@
 #include <array>
 #include <filesystem>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -102,6 +103,17 @@ public:
     static auto libGetModelUses(const std::wstring& modelPath) -> std::vector<ModelUse>;
 
     /**
+     * @brief Retrieves every plugin record of a model-referencing type SeasonPatcher's STAT-family
+     * loop cares about (STAT/ACTI/FURN/MSTT/TREE/FLOR - filtered server-side), across the entire
+     * load order. Unlike libGetModelUses(), takes no mesh path and does not require the referenced
+     * mesh to exist anywhere in the merged Data view - each entry's own meshFile self-identifies
+     * which model it came from, since there's no single queried path to imply it.
+     *
+     * @return Vector of ModelUse structs, one per (record, submodel) use of a supported type.
+     */
+    static auto libEnumerateAllModelUses() -> std::vector<ModelUse>;
+
+    /**
      * @brief One shape's alternate-texture override within a seasonal duplicate request. For STAT
      * there is one of these per NIF shape with a seasonal texture sibling; for LTEX (no shape
      * concept) there is always exactly one, with shapeIndex/shapeName unused.
@@ -127,6 +139,10 @@ public:
         /// the base record's.
         bool overrideGrasses = false;
         std::vector<FormKeyRef> grassOverrides;
+        /// LTEX only: the base record's own linked TXST EditorID (e.g. "LandscapeDirt02"), empty
+        /// if unset. When present, the seasonal duplicate's own TXST EditorID is built from this
+        /// plus seasonSuffix instead of the diffuse texture's filename.
+        std::wstring baseTXSTEditorID;
     };
 
     /**
@@ -156,6 +172,7 @@ public:
         unsigned int formID = 0; ///< FormID of the LTEX record.
         std::array<std::wstring, NUM_PLUGIN_TEXTURE_SLOTS> slots; ///< Current 8-slot texture set; all empty if unset.
         std::wstring editorID; ///< The LTEX record's own EditorID; empty if unset.
+        std::wstring txstEditorID; ///< The linked TextureSet record's own EditorID; empty if unset.
         std::vector<FormKeyRef> grasses; ///< The LTEX's own Grasses list, in order; empty if none.
     };
 
@@ -186,6 +203,19 @@ public:
     static void libPatchLandscapeDefaultParallax(const std::wstring& parallaxPath);
 
     /**
+     * @brief Ensures a TextureSet record with EditorID "DefaultPBRLand" exists - Community Shaders
+     * reads this directly as its own default (no-LTEX-assigned) PBR terrain fallback, a completely
+     * separate convention from TerrainHelper.esp's "LandscapeDefault" (which only matters for the
+     * old vanilla-parallax hack, unrelated to PBR). A no-op if any mod already provides its own
+     * "DefaultPBRLand" record - only ever creates a brand new one (in AutoSeasons.esp), never
+     * overrides an existing one.
+     *
+     * @param slots The 8-slot PBR texture set to use if a new record needs to be created (with or
+     * without the "textures\" prefix on each entry).
+     */
+    static void libEnsureDefaultPBRLand(const std::array<std::wstring, NUM_PLUGIN_TEXTURE_SLOTS>& slots);
+
+    /**
      * @brief Looks up a GRAS (grass) record's own mesh path.
      *
      * @param modName Name of the plugin that owns the GRAS record.
@@ -193,6 +223,24 @@ public:
      * @return The mesh path, or an empty string if the record can't be resolved or has no Model.
      */
     static auto libGetGrassMeshPath(const std::wstring& modName, unsigned int formID) -> std::wstring;
+
+    /**
+     * @brief Looks up a GRAS (grass) record's own EditorID.
+     *
+     * @param modName Name of the plugin that owns the GRAS record.
+     * @param formID FormID of the GRAS record.
+     * @return The EditorID, or an empty string if the record can't be resolved or has none.
+     */
+    static auto libGetGrassEditorID(const std::wstring& modName, unsigned int formID) -> std::wstring;
+
+    /**
+     * @brief Looks up a GRAS record by its own EditorID (exact match, case-insensitive) - used to
+     * find a mod author's own pre-made seasonal grass record before authoring a duplicate.
+     *
+     * @param editorID The EditorID to search for.
+     * @return The matching record's FormKeyRef, or std::nullopt if no GRAS record has that EditorID.
+     */
+    static auto libFindGrassByEditorID(const std::wstring& editorID) -> std::optional<FormKeyRef>;
 
     /// @brief Result of a single GRAS duplication request.
     struct GrassDuplicateResult {

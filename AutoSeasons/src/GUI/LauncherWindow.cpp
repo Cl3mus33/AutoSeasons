@@ -4,12 +4,34 @@
 #include "common/BethesdaGame.hpp"
 #include "util/StringUtil.hpp"
 
+#include <wx/notebook.h>
 #include <wx/statline.h>
 
 using namespace std;
 
 namespace {
 constexpr int BORDER_SIZE = 5;
+
+// AutoSeasons' own accent colors - deliberately distinct from the plain default system colors the
+// rest of the dialog otherwise uses (this is inherited PGPatcher-derived code, and undifferentiated
+// wx dialogs from the same codebase end up looking identical). Kept to a small, consistent palette
+// rather than styled per-control, so it reads as one deliberate identity, not a random hodgepodge.
+const wxColour ACCENT_DARK(27, 94, 32); // header banner background
+const wxColour ACCENT(56, 142, 60); // primary button, section label text
+const wxColour ACCENT_TEXT(255, 255, 255); // text on top of ACCENT_DARK/ACCENT
+
+// Section labels ("Game Location", "Output Location", etc.) get a consistent bold+accent-colored
+// treatment instead of plain default text, so they read as an intentional heading hierarchy rather
+// than blending into the help text below them.
+auto makeSectionLabel(wxWindow* parent, const wxString& text) -> wxStaticText*
+{
+    auto* label = new wxStaticText(parent, wxID_ANY, text);
+    wxFont font = label->GetFont();
+    font.SetWeight(wxFONTWEIGHT_BOLD);
+    label->SetFont(font);
+    label->SetForegroundColour(ACCENT);
+    return label;
+}
 }
 
 LauncherWindow::LauncherWindow(const ASParams& initParams, filesystem::path exePath)
@@ -21,52 +43,53 @@ LauncherWindow::LauncherWindow(const ASParams& initParams, filesystem::path exeP
 
     auto* mainSizer = new wxBoxSizer(wxVERTICAL);
 
-    // Language selector - changing it immediately relaunches the window (see onLanguageChanged)
-    // rather than requiring a separate settings dialog/OK click, since AutoSeasons' launcher is
-    // small enough that a full rebuild is cheap and this keeps the UX to a single click.
-    auto* languageLabel = new wxStaticText(this, wxID_ANY, ASTr("launcher.language.label", "Language"));
-    mainSizer->Add(languageLabel, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
+    // Header banner: gives the dialog an identity of its own at a glance, instead of opening
+    // straight into a plain, undifferentiated settings form indistinguishable from PGPatcher's.
+    auto* headerPanel = new wxPanel(this);
+    headerPanel->SetBackgroundColour(ACCENT_DARK);
+    auto* headerSizer = new wxBoxSizer(wxHORIZONTAL);
+    auto* headerIcon = new wxStaticBitmap(headerPanel, wxID_ANY, wxBitmap(appIcon).ConvertToImage().Scale(32, 32, wxIMAGE_QUALITY_HIGH));
+    headerSizer->Add(headerIcon, 0, wxALL | wxALIGN_CENTER_VERTICAL, BORDER_SIZE * 2);
+    auto* headerTitle = new wxStaticText(headerPanel, wxID_ANY, "AutoSeasons");
+    wxFont headerFont = headerTitle->GetFont();
+    headerFont.SetPointSize(headerFont.GetPointSize() + 4);
+    headerFont.SetWeight(wxFONTWEIGHT_BOLD);
+    headerTitle->SetFont(headerFont);
+    headerTitle->SetForegroundColour(ACCENT_TEXT);
+    headerSizer->Add(headerTitle, 0, wxALIGN_CENTER_VERTICAL);
+    headerPanel->SetSizerAndFit(headerSizer);
+    mainSizer->Add(headerPanel, 0, wxEXPAND);
 
-    m_languages = ASLocale::getAvailableLanguages();
-    wxArrayString languageChoices;
-    int selectedLanguageIndex = 0;
-    for (size_t i = 0; i < m_languages.size(); i++) {
-        languageChoices.Add(m_languages.at(i).displayName);
-        if (m_languages.at(i).code == ASLocale::getCurrentLanguage()) {
-            selectedLanguageIndex = static_cast<int>(i);
-        }
-    }
-    m_languageChoice = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, languageChoices);
-    if (!m_languages.empty()) {
-        m_languageChoice->SetSelection(selectedLanguageIndex);
-    }
-    m_languageChoice->Bind(wxEVT_CHOICE, &LauncherWindow::onLanguageChanged, this);
-    mainSizer->Add(m_languageChoice, 0, wxEXPAND | wxALL, BORDER_SIZE);
+    auto* notebook = new wxNotebook(this, wxID_ANY);
 
-    auto* introText = new wxStaticText(this, wxID_ANY,
+    // "General" tab - the actual per-run settings (game/output locations, blocklists).
+    auto* generalPanel = new wxPanel(notebook);
+    auto* generalSizer = new wxBoxSizer(wxVERTICAL);
+
+    auto* introText = new wxStaticText(generalPanel, wxID_ANY,
         ASTr("launcher.intro",
             "Scans your load order for seasonal texture variants (e.g. rock01_AUT.dds next to "
             "rock01.dds) and generates the plugin + Data/Seasons/*.ini files for the Seasons of "
             "Skyrim SKSE plugin."));
     introText->Wrap(490);
-    mainSizer->Add(introText, 0, wxALL, BORDER_SIZE * 2);
+    generalSizer->Add(introText, 0, wxALL, BORDER_SIZE * 2);
 
     // Game location
-    auto* gameLocationLabel = new wxStaticText(this, wxID_ANY, ASTr("launcher.gameLocation.label", "Game Location"));
-    mainSizer->Add(gameLocationLabel, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
+    auto* gameLocationLabel = makeSectionLabel(generalPanel, ASTr("launcher.gameLocation.label", "Game Location"));
+    generalSizer->Add(gameLocationLabel, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
 
-    m_gameLocationTextbox = new wxTextCtrl(this, wxID_ANY, initParams.gameDir.wstring());
-    auto* gameBrowseButton = new wxButton(this, wxID_ANY, ASTr("common.browse", "Browse"));
+    m_gameLocationTextbox = new wxTextCtrl(generalPanel, wxID_ANY, initParams.gameDir.wstring());
+    auto* gameBrowseButton = new wxButton(generalPanel, wxID_ANY, ASTr("common.browse", "Browse"));
     gameBrowseButton->Bind(wxEVT_BUTTON, &LauncherWindow::onBrowseGameLocation, this);
 
     auto* gameLocationSizer = new wxBoxSizer(wxHORIZONTAL);
     gameLocationSizer->Add(m_gameLocationTextbox, 1, wxEXPAND | wxALL, BORDER_SIZE);
     gameLocationSizer->Add(gameBrowseButton, 0, wxALL, BORDER_SIZE);
-    mainSizer->Add(gameLocationSizer, 0, wxEXPAND);
+    generalSizer->Add(gameLocationSizer, 0, wxEXPAND);
 
     // Game type
-    auto* gameTypeLabel = new wxStaticText(this, wxID_ANY, ASTr("launcher.gameType.label", "Game Type"));
-    mainSizer->Add(gameTypeLabel, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
+    auto* gameTypeLabel = makeSectionLabel(generalPanel, ASTr("launcher.gameType.label", "Game Type"));
+    generalSizer->Add(gameTypeLabel, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
 
     wxArrayString gameTypeChoices;
     int selectedGameTypeIndex = 0;
@@ -78,38 +101,38 @@ LauncherWindow::LauncherWindow(const ASParams& initParams, filesystem::path exeP
         }
         curGameTypeIndex++;
     }
-    m_gameTypeChoice = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, gameTypeChoices);
+    m_gameTypeChoice = new wxChoice(generalPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, gameTypeChoices);
     m_gameTypeChoice->SetSelection(selectedGameTypeIndex);
-    mainSizer->Add(m_gameTypeChoice, 0, wxEXPAND | wxALL, BORDER_SIZE);
+    generalSizer->Add(m_gameTypeChoice, 0, wxEXPAND | wxALL, BORDER_SIZE);
 
     // Output location
-    auto* outputLocationLabel = new wxStaticText(this, wxID_ANY, ASTr("launcher.outputLocation.label", "Output Location"));
-    mainSizer->Add(outputLocationLabel, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
+    auto* outputLocationLabel = makeSectionLabel(generalPanel, ASTr("launcher.outputLocation.label", "Output Location"));
+    generalSizer->Add(outputLocationLabel, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
 
-    m_outputLocationTextbox = new wxTextCtrl(this, wxID_ANY, initParams.outputDir.wstring());
-    auto* outputBrowseButton = new wxButton(this, wxID_ANY, ASTr("common.browse", "Browse"));
+    m_outputLocationTextbox = new wxTextCtrl(generalPanel, wxID_ANY, initParams.outputDir.wstring());
+    auto* outputBrowseButton = new wxButton(generalPanel, wxID_ANY, ASTr("common.browse", "Browse"));
     outputBrowseButton->Bind(wxEVT_BUTTON, &LauncherWindow::onBrowseOutputLocation, this);
 
     auto* outputLocationSizer = new wxBoxSizer(wxHORIZONTAL);
     outputLocationSizer->Add(m_outputLocationTextbox, 1, wxEXPAND | wxALL, BORDER_SIZE);
     outputLocationSizer->Add(outputBrowseButton, 0, wxALL, BORDER_SIZE);
-    mainSizer->Add(outputLocationSizer, 0, wxEXPAND);
+    generalSizer->Add(outputLocationSizer, 0, wxEXPAND);
 
     // Mesh blocklist - an inline editable table (not a separate popup), so the current rules are
     // always visible at a glance. Right click, or double-click a row, to add/remove entries.
-    auto* blocklistLabel = new wxStaticText(this, wxID_ANY, ASTr("launcher.blocklist.label", "Seasonal Variation Blocklist"));
-    mainSizer->Add(blocklistLabel, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
+    auto* blocklistLabel = makeSectionLabel(generalPanel, ASTr("launcher.blocklist.label", "Seasonal Variation Blocklist"));
+    generalSizer->Add(blocklistLabel, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
 
-    auto* blocklistHelpText = new wxStaticText(this, wxID_ANY,
+    auto* blocklistHelpText = new wxStaticText(generalPanel, wxID_ANY,
         ASTr("launcher.blocklist.help",
             "Meshes matching a rule here are skipped by seasonal variation (useful for interior "
             "meshes, since Seasons of Skyrim only swaps records in exterior worldspaces). Wildcards "
             "(*) allowed, e.g. \"*/interiors/*\". Right click to add/remove rows."));
     blocklistHelpText->Wrap(520);
-    mainSizer->Add(blocklistHelpText, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
+    generalSizer->Add(blocklistHelpText, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
 
     m_blocklistCtrl = new PGModifiableListCtrl(
-        this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_EDIT_LABELS | wxLC_NO_HEADER);
+        generalPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_EDIT_LABELS | wxLC_NO_HEADER);
     m_blocklistCtrl->AppendColumn(ASTr("launcher.blocklist.column", "Rule"), wxLIST_FORMAT_LEFT, wxLIST_AUTOSIZE_USEHEADER);
     m_blocklistCtrl->SetColumnWidth(0, wxLIST_AUTOSIZE_USEHEADER);
 
@@ -119,26 +142,26 @@ LauncherWindow::LauncherWindow(const ASParams& initParams, filesystem::path exeP
     }
     m_blocklistCtrl->InsertItem(m_blocklistCtrl->GetItemCount(), "");
 
-    mainSizer->Add(m_blocklistCtrl, 1, wxEXPAND | wxALL, BORDER_SIZE);
+    generalSizer->Add(m_blocklistCtrl, 1, wxEXPAND | wxALL, BORDER_SIZE);
 
     // Season-locked EditorID keywords - same inline editable table pattern as the mesh blocklist
     // above. Records whose EditorID contains one of these (case-insensitive substring match) are
     // skipped by seasonal variation entirely, e.g. so a mod's own "...Coast01"/"...River01"
     // statics never get a pointless seasonal duplicate regardless of which texture files exist.
     auto* editorIDKeywordsLabel
-        = new wxStaticText(this, wxID_ANY, ASTr("launcher.editorIdKeywords.label", "Season-Locked EditorID Keywords"));
-    mainSizer->Add(editorIDKeywordsLabel, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
+        = makeSectionLabel(generalPanel, ASTr("launcher.editorIdKeywords.label", "Season-Locked EditorID Keywords"));
+    generalSizer->Add(editorIDKeywordsLabel, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
 
-    auto* editorIDKeywordsHelpText = new wxStaticText(this, wxID_ANY,
+    auto* editorIDKeywordsHelpText = new wxStaticText(generalPanel, wxID_ANY,
         ASTr("launcher.editorIdKeywords.help",
             "Records whose EditorID contains one of these words (case-insensitive) are skipped by "
             "seasonal variation entirely - useful for names that already signal a fixed "
             "season/biome, e.g. \"Coast\" or \"River\". Right click to add/remove rows."));
     editorIDKeywordsHelpText->Wrap(520);
-    mainSizer->Add(editorIDKeywordsHelpText, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
+    generalSizer->Add(editorIDKeywordsHelpText, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
 
     m_editorIDKeywordsCtrl = new PGModifiableListCtrl(
-        this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_EDIT_LABELS | wxLC_NO_HEADER);
+        generalPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxLC_REPORT | wxLC_EDIT_LABELS | wxLC_NO_HEADER);
     m_editorIDKeywordsCtrl->AppendColumn(
         ASTr("launcher.editorIdKeywords.column", "Keyword"), wxLIST_FORMAT_LEFT, wxLIST_AUTOSIZE_USEHEADER);
     m_editorIDKeywordsCtrl->SetColumnWidth(0, wxLIST_AUTOSIZE_USEHEADER);
@@ -149,7 +172,65 @@ LauncherWindow::LauncherWindow(const ASParams& initParams, filesystem::path exeP
     }
     m_editorIDKeywordsCtrl->InsertItem(m_editorIDKeywordsCtrl->GetItemCount(), "");
 
-    mainSizer->Add(m_editorIDKeywordsCtrl, 1, wxEXPAND | wxALL, BORDER_SIZE);
+    generalSizer->Add(m_editorIDKeywordsCtrl, 1, wxEXPAND | wxALL, BORDER_SIZE);
+
+    // ESM flag: always on (matches PGPatcher's own output plugin convention). ESL-flagging
+    // happens automatically and safely based on record count, independent of this - not worth
+    // exposing as a separate choice, it was just a confusing extra decision.
+
+    generalPanel->SetSizer(generalSizer);
+    notebook->AddPage(generalPanel, ASTr("launcher.tab.general", "General"));
+
+    // "Options" tab - app-wide preferences (language, theme) rather than per-run settings.
+    auto* optionsPanel = new wxPanel(notebook);
+    auto* optionsSizer = new wxBoxSizer(wxVERTICAL);
+
+    // Language selector - changing it immediately relaunches the window (see onLanguageChanged)
+    // rather than requiring a separate settings dialog/OK click, since AutoSeasons' launcher is
+    // small enough that a full rebuild is cheap and this keeps the UX to a single click.
+    auto* languageLabel = makeSectionLabel(optionsPanel, ASTr("launcher.language.label", "Language"));
+    optionsSizer->Add(languageLabel, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
+
+    m_languages = ASLocale::getAvailableLanguages();
+    wxArrayString languageChoices;
+    int selectedLanguageIndex = 0;
+    for (size_t i = 0; i < m_languages.size(); i++) {
+        languageChoices.Add(m_languages.at(i).displayName);
+        if (m_languages.at(i).code == ASLocale::getCurrentLanguage()) {
+            selectedLanguageIndex = static_cast<int>(i);
+        }
+    }
+    m_languageChoice = new wxChoice(optionsPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, languageChoices);
+    if (!m_languages.empty()) {
+        m_languageChoice->SetSelection(selectedLanguageIndex);
+    }
+    m_languageChoice->Bind(wxEVT_CHOICE, &LauncherWindow::onLanguageChanged, this);
+    optionsSizer->Add(m_languageChoice, 0, wxEXPAND | wxALL, BORDER_SIZE);
+
+    // Theme selector - same immediate-relaunch pattern as the language selector, since applying a
+    // wxWidgets appearance change requires it to be set before the window it affects is created.
+    auto* themeLabel = makeSectionLabel(optionsPanel, ASTr("launcher.theme.label", "Theme"));
+    optionsSizer->Add(themeLabel, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
+
+    wxArrayString themeChoices;
+    themeChoices.Add(ASTr("launcher.theme.system", "System"));
+    themeChoices.Add(ASTr("launcher.theme.light", "Light"));
+    themeChoices.Add(ASTr("launcher.theme.dark", "Dark"));
+    m_themeChoice = new wxChoice(optionsPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, themeChoices);
+    int selectedThemeIndex = 0;
+    if (initParams.uiTheme == "light") {
+        selectedThemeIndex = 1;
+    } else if (initParams.uiTheme == "dark") {
+        selectedThemeIndex = 2;
+    }
+    m_themeChoice->SetSelection(selectedThemeIndex);
+    m_themeChoice->Bind(wxEVT_CHOICE, &LauncherWindow::onThemeChanged, this);
+    optionsSizer->Add(m_themeChoice, 0, wxEXPAND | wxALL, BORDER_SIZE);
+
+    optionsPanel->SetSizer(optionsSizer);
+    notebook->AddPage(optionsPanel, ASTr("launcher.tab.options", "Options"));
+
+    mainSizer->Add(notebook, 1, wxEXPAND | wxALL, BORDER_SIZE);
 
     Bind(wxEVT_SIZE, [this](wxSizeEvent& event) -> void {
         updateListColumnWidths();
@@ -164,16 +245,14 @@ LauncherWindow::LauncherWindow(const ASParams& initParams, filesystem::path exeP
         event.Skip();
     });
 
-    // ESM flag: always on (matches PGPatcher's own output plugin convention). ESL-flagging
-    // happens automatically and safely based on record count, independent of this - not worth
-    // exposing as a separate choice, it was just a confusing extra decision.
-
     mainSizer->Add(new wxStaticLine(this, wxID_ANY), 0, wxEXPAND | wxALL, BORDER_SIZE);
 
     // Buttons
     auto* buttonSizer = new wxBoxSizer(wxHORIZONTAL);
     auto* cancelButton = new wxButton(this, wxID_CANCEL, ASTr("common.cancel", "Cancel"));
     m_okButton = new wxButton(this, wxID_ANY, ASTr("launcher.startButton", "Start Patching"));
+    m_okButton->SetBackgroundColour(ACCENT);
+    m_okButton->SetForegroundColour(ACCENT_TEXT);
     m_okButton->Bind(wxEVT_BUTTON, &LauncherWindow::onOkButtonPressed, this);
     buttonSizer->AddStretchSpacer();
     buttonSizer->Add(cancelButton, 0, wxALL, BORDER_SIZE);
@@ -189,6 +268,17 @@ void LauncherWindow::getParams(ASParams& outParams) const
     outParams.outputDir = m_outputLocationTextbox->GetValue().ToStdWstring();
     outParams.gameType = BethesdaGame::getGameTypes()[static_cast<size_t>(m_gameTypeChoice->GetSelection())];
     outParams.uiLanguage = ASLocale::getCurrentLanguage();
+    switch (m_themeChoice->GetSelection()) {
+    case 1:
+        outParams.uiTheme = "light";
+        break;
+    case 2:
+        outParams.uiTheme = "dark";
+        break;
+    default:
+        outParams.uiTheme = "system";
+        break;
+    }
     // removeGrassInWinter has no GUI control - preserve whatever was loaded from
     // AutoSeasons_config.json (or the ASParams default) rather than overwriting it here.
     // Never ESM-flag: an ESM-flagged plugin historically could only have other ESM-flagged
@@ -228,8 +318,17 @@ void LauncherWindow::onLanguageChanged([[maybe_unused]] wxCommandEvent& event)
         return;
     }
 
-    ASLocale::init(m_exePath / "translations", selectedLang.code);
+    ASLocale::init(m_exePath / "AutoSeasons_translations", selectedLang.code);
     EndModal(RESULT_RELAUNCH);
+}
+
+void LauncherWindow::onThemeChanged([[maybe_unused]] wxCommandEvent& event)
+{
+    // Unlike a language change, this needs a full process restart, not just an internal rebuild -
+    // wx's MSW dark mode support turned out to be a one-way switch once enabled for a process, so
+    // an in-process relaunch can't reliably get back to a lighter appearance after a darker one.
+    // See main.cpp's handling of RESULT_RESTART.
+    EndModal(RESULT_RESTART);
 }
 
 void LauncherWindow::onBrowseGameLocation([[maybe_unused]] wxCommandEvent& event)

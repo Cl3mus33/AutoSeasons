@@ -60,6 +60,9 @@ auto ASConfig::load(const filesystem::path& exeDir) -> ASParams
         if (configJ.contains("uiLanguage")) {
             params.uiLanguage = configJ["uiLanguage"].get<string>();
         }
+        if (configJ.contains("uiTheme")) {
+            params.uiTheme = configJ["uiTheme"].get<string>();
+        }
         if (configJ.contains("gameDir")) {
             params.gameDir = StringUtil::utf8toUTF16(configJ["gameDir"].get<string>());
         }
@@ -73,6 +76,7 @@ auto ASConfig::load(const filesystem::path& exeDir) -> ASParams
             params.esmMode = configJ["esmMode"].get<int>();
         }
         if (configJ.contains("meshBlockList")) {
+            params.meshBlockList.clear();
             for (const auto& item : configJ["meshBlockList"]) {
                 params.meshBlockList.push_back(StringUtil::utf8toUTF16(item.get<string>()));
             }
@@ -99,6 +103,7 @@ void ASConfig::save(const filesystem::path& exeDir, const ASParams& params)
     nlohmann::json configJ;
 
     configJ["uiLanguage"] = params.uiLanguage;
+    configJ["uiTheme"] = params.uiTheme;
     configJ["gameDir"] = StringUtil::utf16toUTF8(params.gameDir.wstring());
     configJ["gameType"] = gameTypeToString(params.gameType);
     configJ["outputDir"] = StringUtil::utf16toUTF8(params.outputDir.wstring());

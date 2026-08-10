@@ -61,6 +61,12 @@ table SeasonalDuplicateRequest {
   // be empty, meaning no grass at all for this season) instead of inheriting the base record's.
   override_grasses:bool;
   grass_overrides:[FormKeyRef];
+  // LTEX only: the base record's own linked TXST EditorID (e.g. "LandscapeDirt02"), empty if
+  // unset. When present, the seasonal duplicate's own TXST EditorID is built from this plus
+  // season_suffix instead of the diffuse texture's filename, matching the vanilla/ESP naming
+  // convention so Community Shaders' PBRTextureSets lookup (which matches by TXST EditorID) lines
+  // up with a config cloned from the base TXST's own file.
+  base_txst_editor_id:string (required);
 }
 
 table SeasonalDuplicateRequests {
@@ -87,6 +93,7 @@ table LandscapeTextureEntry {
   form_id:uint;
   slots:TextureSet (required); // full 8-slot texture set of the linked TXST; all-empty if unset
   editor_id:string (required); // the LTEX record's own EditorID, empty string if unset
+  txst_editor_id:string (required); // the linked TXST record's own EditorID, empty string if unset
   grasses:[FormKeyRef] (required); // the LTEX's own Grasses list, in order; empty if none
 }
 

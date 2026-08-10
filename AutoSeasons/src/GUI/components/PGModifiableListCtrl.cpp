@@ -1,5 +1,6 @@
 #include "GUI/components/PGModifiableListCtrl.hpp"
 
+#include "ASLocale.hpp"
 #include "GUI/components/PGCustomListctrlChangedEvent.hpp"
 
 using namespace std;
@@ -67,9 +68,9 @@ void PGModifiableListCtrl::onListItemActivated(wxListEvent& event)
 void PGModifiableListCtrl::onContextMenu([[maybe_unused]] wxContextMenuEvent& event)
 {
     wxMenu menu;
-    menu.Append(static_cast<int>(ContextMenu::ID_PG_ADD_ITEM), "Add");
+    menu.Append(static_cast<int>(ContextMenu::ID_PG_ADD_ITEM), ASTr("common.add", "Add"));
     auto* removeItem = menu.Append(static_cast<int>(ContextMenu::ID_PG_REMOVE_ITEM),
-                                   "Remove");
+                                   ASTr("common.remove", "Remove"));
 
     const long lastIndex = GetItemCount() - 1; // trailing blank row
     const long selectedCount = GetSelectedItemCount();

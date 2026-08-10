@@ -54,7 +54,12 @@ Requirements:
 - [vcpkg](https://github.com/microsoft/vcpkg) (manifest mode; dependencies are pulled automatically)
 - .NET 8 SDK (for the Mutagen-based plugin backend)
 - CMake 3.31+, Ninja
-- [flatc](https://github.com/google/flatbuffers) (FlatBuffers compiler) on your `PATH`
+- [flatc](https://github.com/google/flatbuffers) (FlatBuffers compiler) on your `PATH`, matching
+  the FlatBuffers version vcpkg resolves for this project (see `vcpkg.json`) — a mismatched `flatc`
+  can generate headers incompatible with the runtime library.
+
+`--recurse-submodules` is required: [nifly](https://github.com/ousnius/nifly) (NIF file handling)
+is checked out as a git submodule under `external/`, not pulled in by vcpkg.
 
 ```bash
 git clone --recurse-submodules https://github.com/<your-username>/AutoSeasons.git
@@ -63,8 +68,10 @@ cmake -B buildRelease -S . -G Ninja -DCMAKE_TOOLCHAIN_FILE=<path-to-vcpkg>/scrip
 cmake --build buildRelease
 ```
 
-The built executable and its runtime dependencies (shaders, translations, .NET runtime files) end
-up in `buildRelease/bin/`.
+The C# Mutagen backend (`ASMutagen/`) is built and published automatically as part of this same
+CMake build (via DNNE, which exports it as a native DLL callable from the C++ side) — no separate
+`dotnet build` step is needed. The built executable and its runtime dependencies (shaders,
+`AutoSeasons_translations/`, .NET runtime files) end up in `buildRelease/bin/`.
 
 ## Credits
 

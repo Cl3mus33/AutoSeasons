@@ -8,6 +8,7 @@
 #include <array>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 /**
@@ -78,6 +79,18 @@ public:
     };
 
     /**
+     * @struct PBRTextureSetFile
+     * @brief One Community Shaders "PBRTextureSets" config (a bare json object, not an array,
+     * keyed by the TextureSet record's own EditorID), plus the path it should be written to.
+     * Unlike PBRJsonRuleFile/PBRNIFPatcher, this is never consumed by PGPatcher - Community
+     * Shaders reads it directly at runtime.
+     */
+    struct PBRTextureSetFile {
+        std::filesystem::path relativePath; ///< e.g. "PBRTextureSets/dirt02_AUT_ltex.json"
+        nlohmann::json content;
+    };
+
+    /**
      * @brief Runs the seasonal duplication pass over all known meshes.
      *
      * @param pgd The populated PGDirectory instance (must have already scanned meshes/textures).
@@ -89,24 +102,62 @@ public:
      * (no grass drawn under snow) instead of inheriting the base record's grass types.
      * @param[out] outPBRRules One PBRNIFPatcher json rule file per unique seasonal PBR diffuse
      * texture found during the pass, for writePBRJsonRules().
+     * @param[out] outPBRTextureSets One PBRTextureSets config per seasonal LTEX texture set whose
+     * base TextureSet has an existing config to clone, for writePBRTextureSetFiles().
+     * @param[out] outForeignRawLinesBySection Every other mod's own Data/Seasons swap-pair lines
+     * (verbatim), keyed by "SEASON|RecordType", for writeIniFiles() to fold into AutoSeasons' own
+     * merged AIO ini.
+     * @param[out] outForeignIniFilenames Every foreign ini file's own name whose content is now
+     * folded into outForeignRawLinesBySection, for writeForeignIniOverrides().
      * @return All base/swap FormID pairs created, across all seasons.
      */
     static auto run(PGDirectory* pgd,
                     const std::vector<std::wstring>& meshBlockList,
                     const std::vector<std::wstring>& seasonLockedEditorIDKeywords,
                     bool removeGrassInWinter,
-                    std::vector<PBRJsonRuleFile>& outPBRRules) -> std::vector<SwapEntry>;
+                    std::vector<PBRJsonRuleFile>& outPBRRules,
+                    std::vector<PBRTextureSetFile>& outPBRTextureSets,
+                    std::unordered_map<std::string, std::vector<std::wstring>>& outForeignRawLinesBySection,
+                    std::vector<std::filesystem::path>& outForeignIniFilenames) -> std::vector<SwapEntry>;
 
     /**
-     * @brief Writes one Data/Seasons/AutoSeasons_<SUFFIX>.ini file per season present in
-     * `swaps`, in the exact format Seasons of Skyrim's FormSwapMap reads
-     * (https://github.com/powerof3/SeasonsOfSkyrim): "0x<LocalFormID>~Plugin.esp|0x<LocalFormID>~Plugin.esp"
-     * lines under a "[Statics]" section.
+     * @brief Writes one Data/Seasons/z_AIO_AutoSeasons_<SUFFIX>.ini file per season present in
+     * `swaps` or `foreignRawLinesBySection`, in the exact format Seasons of Skyrim's FormSwapMap
+     * reads (https://github.com/powerof3/SeasonsOfSkyrim):
+     * "0x<LocalFormID>~Plugin.esp|0x<LocalFormID>~Plugin.esp" lines under a "[Statics]" section -
+     * a lowercase "z_" prefix so this file is evaluated last (alphabetically) and always wins over
+     * any other mod's own ini for a record both cover. This is an "AIO" (all-in-one): besides
+     * AutoSeasons' own generated duplicates, it also folds in every other detected mod's own
+     * season-swap declarations (see run()'s outForeignRawLinesBySection) - paired with
+     * writeForeignIniOverrides() neutralizing those mods' own ini files, this becomes the single
+     * authoritative season-swap source for the whole load order instead of leaving Seasons of
+     * Skyrim to reconcile several separate files via alphabetical priority.
      *
      * @param outputDir The mod output directory (an existing Data/Seasons folder is created under it).
      * @param swaps The swap entries produced by run().
+     * @param foreignRawLinesBySection Foreign ini content collected via run()'s
+     * outForeignRawLinesBySection parameter.
      */
-    static void writeIniFiles(const std::filesystem::path& outputDir, const std::vector<SwapEntry>& swaps);
+    static void writeIniFiles(const std::filesystem::path& outputDir, const std::vector<SwapEntry>& swaps,
+        const std::unordered_map<std::string, std::vector<std::wstring>>& foreignRawLinesBySection);
+
+    /**
+     * @brief Writes an empty (comment-only) override for each foreign Data/Seasons ini file whose
+     * content writeIniFiles() has already folded into AutoSeasons' own merged AIO ini - since
+     * AutoSeasons' own output mod is expected to load after every mod it scans, this shadows
+     * (without ever touching) the original file at the mod-manager virtual-filesystem level, so
+     * its swaps aren't evaluated twice. A no-op for any filename AutoSeasons' own output mod isn't
+     * actually positioned to override - Seasons of Skyrim would then read both the original and
+     * this empty file, which is harmless (empty + already-covered, so no functional difference)
+     * but doesn't achieve full deduplication; there's no way for AutoSeasons itself to verify mod
+     * order from here, so this relies on the same "AutoSeasons' output goes last" assumption its
+     * PBRNIFPatcher/PBRTextureSets output already depends on.
+     *
+     * @param outputDir The mod output directory.
+     * @param foreignIniFilenames Filenames collected via run()'s outForeignIniFilenames parameter.
+     */
+    static void writeForeignIniOverrides(
+        const std::filesystem::path& outputDir, const std::vector<std::filesystem::path>& foreignIniFilenames);
 
     /**
      * @brief Writes each PBRJsonRuleFile collected by run() to its own file under Data\PBRNIFPatcher\,
@@ -116,6 +167,15 @@ public:
      * @param rules PBR rule files collected via run()'s outPBRRules parameter.
      */
     static void writePBRJsonRules(const std::filesystem::path& outputDir, const std::vector<PBRJsonRuleFile>& rules);
+
+    /**
+     * @brief Writes each PBRTextureSetFile collected by run() to its own file under
+     * Data\PBRTextureSets\, for Community Shaders to read directly at runtime.
+     *
+     * @param outputDir The mod output directory.
+     * @param files PBR texture set files collected via run()'s outPBRTextureSets parameter.
+     */
+    static void writePBRTextureSetFiles(const std::filesystem::path& outputDir, const std::vector<PBRTextureSetFile>& files);
 
 private:
     /**
@@ -131,30 +191,36 @@ private:
     };
 
     /**
-     * @brief Given a shape's diffuse (and optionally normal) texture, builds the seasonal variant
-     * of just those two slots for one season - never any other slot. Checks the normal (vanilla)
-     * texture folder first; if no seasonal sibling exists there, falls back to checking for a PBR
-     * seasonal variant under textures\pbr\ of the same relative path.
+     * @brief Given a shape's current texture set, builds its seasonal variant for one season.
+     * Whether this is treated as a PBR material is decided purely by whether a PBRNifPatcher rule
+     * exists matching the base diffuse texture's name (see pbrConfigs) - never by whether this
+     * specific record's own currently-winning override happens to already point at a
+     * textures\pbr\... path, since PGPatcher itself converts by texture name, not by ESP state,
+     * and different records referencing the same base texture can have diverged (some rewritten by
+     * a PBR-authored replacer mod, some not). If a rule matches, every populated PBR slot
+     * (diffuse/normal/RMAOS/height/etc) gets its own seasonal duplicate; otherwise, only
+     * diffuse+normal are duplicated (the vanilla-style default).
      *
      * @param pgd The PGDirectory instance (used to check which texture files actually exist).
-     * @param baseSlots The shape's current texture set (PGTypes::TextureSet layout); only index 0
-     * (diffuse) and index 1 (normal) are ever read.
+     * @param baseSlots The shape's current texture set (PGTypes::TextureSet layout).
      * @param season Season suffix, e.g. "AUT".
-     * @param includeParallax LTEX only: also look for a season-suffixed parallax (_p) sibling of
-     * the diffuse texture and populate slot 3 with it if found - no fallback to the non-seasonal
-     * one, since the base and seasonal diffuse can look different enough that their height maps
-     * shouldn't be assumed interchangeable. Needed for TerrainHelper, which reads that slot
-     * directly off the winning LTEX's TXST - PGPatcher never touches LTEX records at all, so
-     * there's no downstream pass to add it the way there is for STAT. run() only ever passes true
-     * here when TerrainHelper.esp is actually in the load order (nothing else ever reads this
-     * slot), so callers don't need to re-check that themselves.
-     * @return A result with slots 0/1 (and, for LTEX, slot 3) populated, or std::nullopt if no
-     * seasonal sibling exists at all (neither vanilla-folder nor PBR-folder), or the base diffuse
-     * texture itself already lives under textures\pbr\ (a mesh already PBR-patched in-place - not
-     * handled here).
+     * @param includeParallax LTEX only, non-PBR case: also look for a season-suffixed parallax
+     * (_p) sibling of the diffuse texture and populate slot 3 with it if found - no fallback to
+     * the non-seasonal one, since the base and seasonal diffuse can look different enough that
+     * their height maps shouldn't be assumed interchangeable. Needed for TerrainHelper, which
+     * reads that slot directly off the winning LTEX's TXST - PGPatcher never touches LTEX records
+     * at all, so there's no downstream pass to add it the way there is for STAT. run() only ever
+     * passes true here when TerrainHelper.esp is actually in the load order (nothing else ever
+     * reads this slot), so callers don't need to re-check that themselves.
+     * @param pbrConfigIndex Every loaded PBRNifPatcher rule entry, indexed by texture stem (see
+     * buildPBRConfigStemIndex), used to decide whether the base texture is PBR-designated at all.
+     * @return A result with the relevant slots populated, or std::nullopt if no seasonal sibling
+     * exists at all for this texture (vanilla or PBR).
      */
     static auto buildSeasonalSlots(PGDirectory* pgd,
                                    const PGTypes::TextureSet& baseSlots,
                                    std::string_view season,
-                                   bool includeParallax) -> std::optional<SeasonalSlotResult>;
+                                   bool includeParallax,
+                                   const std::unordered_map<std::wstring, nlohmann::json>& pbrConfigIndex)
+        -> std::optional<SeasonalSlotResult>;
 };

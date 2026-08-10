@@ -114,6 +114,12 @@ auto PGDirectory::findFiles() -> void
                 if (PGGlobals::isPGMMSet()) {
                     PGGlobals::getPGMM()->addShaderToModByFile(path, PGEnums::ShapeShader::TRUEPBR);
                 }
+            } else if (boost::iequals(firstPath, L"pbrtexturesets")) {
+                // Found a Community Shaders PBRTextureSets config
+                Logger::trace(L"Found PBR texture set json: {} / {}",
+                              path.wstring(),
+                              file.bsaFile == nullptr ? L"" : file.bsaFile->path.wstring());
+                m_pbrTextureSetJSONs.push_back(path);
             } else if (boost::iequals(firstPath, L"lightplacer")) {
                 // Found Light Placer JSON config
                 Logger::trace(L"Found light placer json: {} / {}",
@@ -123,22 +129,6 @@ auto PGDirectory::findFiles() -> void
             }
         }
     }
-}
-
-void PGDirectory::waitForMeshMapping()
-{
-    if (m_meshUseMappingQueue.isShutdown()) {
-        // already done
-        return;
-    }
-
-    if (m_meshUseMappingQueue.isProcessing()) {
-        Logger::info("Waiting for plugin mesh use mapping to complete...");
-        m_meshUseMappingQueue.waitForCompletion();
-    }
-
-    // shutdown the queue to free resources
-    m_meshUseMappingQueue.shutdown();
 }
 
 void PGDirectory::waitForCMClassification()
@@ -518,18 +508,6 @@ auto PGDirectory::mapTexturesFromNIF(const filesystem::path& nifPath,
         }
     }
 
-    if (multithreading) {
-        m_meshUseMappingQueue.queueTask([this, nifPath]() -> void {
-            // send job to find mesh uses for this mesh
-            const auto modelUses = PGPlugin::getModelUses(nifPath);
-            updateNifCache(nifPath, modelUses);
-        });
-    } else {
-        // send job to find mesh uses for this mesh
-        const auto modelUses = PGPlugin::getModelUses(nifPath);
-        updateNifCache(nifPath, modelUses);
-    }
-
     // find mod of this mesh
     if (PGGlobals::isPGMMSet()) {
         auto mod = PGGlobals::getPGMM()->getModByFileSmart(nifPath);
@@ -605,19 +583,6 @@ auto PGDirectory::addToTextureMaps(const filesystem::path& path,
     }
 }
 
-void PGDirectory::updateNifCache(const filesystem::path& path,
-                                 const vector<pair<PGMeshPermutationTracker::FormKey,
-                                                   PGPlugin::MeshUseAttributes>>& meshUses)
-{
-    const unique_lock lock(m_meshesMutex);
-
-    if (!m_meshes.contains(path)) {
-        m_meshes[path] = NifCache {};
-    }
-
-    m_meshes.at(path).meshUses = meshUses;
-}
-
 auto PGDirectory::getTextureMap(const PGEnums::TextureSlots& slot) -> map<wstring,
                                                                           unordered_set<PGTypes::PGTexture,
                                                                                         PGTypes::PGTextureHasher>>&
@@ -633,15 +598,11 @@ auto PGDirectory::getTextureMapConst(const PGEnums::TextureSlots& slot) const
     return m_textureMaps.at(static_cast<size_t>(slot));
 }
 
-auto PGDirectory::getMeshes() const -> const unordered_map<filesystem::path,
-                                                           NifCache>&
-{
-    return m_meshes;
-}
-
 auto PGDirectory::getTextures() const -> const unordered_set<filesystem::path>& { return m_textures; }
 
 auto PGDirectory::getPBRJSONs() const -> const vector<filesystem::path>& { return m_pbrJSONs; }
+
+auto PGDirectory::getPBRTextureSetJSONs() const -> const vector<filesystem::path>& { return m_pbrTextureSetJSONs; }
 
 auto PGDirectory::getLightPlacerJSONs() const -> const vector<filesystem::path>& { return m_lightPlacerJSONs; }
 

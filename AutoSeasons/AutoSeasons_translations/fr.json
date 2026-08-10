@@ -2,11 +2,23 @@
   "_language": "Français",
   "common": {
     "browse": "Parcourir",
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "add": "Ajouter",
+    "remove": "Supprimer"
   },
   "launcher": {
+    "tab": {
+      "general": "Général",
+      "options": "Options"
+    },
     "language": {
       "label": "Langue"
+    },
+    "theme": {
+      "label": "Thème",
+      "system": "Système",
+      "light": "Clair",
+      "dark": "Sombre"
     },
     "intro": "Analyse votre ordre de chargement à la recherche de variantes de textures saisonnières (ex. rock01_AUT.dds à côté de rock01.dds) et génère le plugin ainsi que les fichiers Data/Seasons/*.ini pour le plugin SKSE Seasons of Skyrim.",
     "gameLocation": {

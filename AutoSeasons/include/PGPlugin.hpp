@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -172,8 +173,11 @@ public:
         bool isWeighted;
         /// @brief True if this is a single-pass MATO (Material Object) record.
         bool singlepassMATO;
-        /// @brief True if this mesh is facegen
-        bool isFacegen;
+        /// @brief True if this mesh is facegen. Currently unused downstream (no consumer reads
+        /// it) - defaulted rather than left uninitialized, since every other MeshUseAttributes
+        /// bool is explicitly set at PGPlugin::getModelUses()'s construction site but this one
+        /// was not, which meant it held indeterminate stack memory.
+        bool isFacegen = false;
         /// @brief True if this mesh use should be excluded from patching.
         bool isIgnored;
         /// @brief True if this is a dummy use not actually tied to a plugin
@@ -274,6 +278,21 @@ public:
                                                                                      MeshUseAttributes>>;
 
     /**
+     * @brief Returns every plugin record use of a Model across the entire load order, for the
+     * record types SeasonPatcher's STAT-family loop cares about (server-side filtered to STAT/
+     * ACTI/FURN/MSTT/TREE/FLOR). Unlike getModelUses(), does NOT require the referenced mesh to
+     * exist anywhere in the merged Data view - each entry is derived purely from the plugin's own
+     * Model.File field, so a record with an explicit AlternateTextures override still gets
+     * returned even when its mesh can't be located on disk. Not grouped by mesh path - the caller
+     * groups by the first tuple element (lowercase it first, matching the convention used
+     * elsewhere for mesh-path map keys).
+     *
+     * @return Vector of (meshFile, FormKey, MeshUseAttributes) tuples across every mesh.
+     */
+    static auto getAllModelUses()
+        -> std::vector<std::tuple<std::wstring, PGMeshPermutationTracker::FormKey, MeshUseAttributes>>;
+
+    /**
      * @brief Saves the generated output plugin to the given directory.
      *
      * @param outputDir Directory in which to write the output plugin file.
@@ -282,12 +301,4 @@ public:
     static void savePlugin(const std::filesystem::path& outputDir,
                            ESMMode esmMode);
 
-    /**
-     * @brief Get the Plugin Path From Data Path object (removes textures or meshes from beginning of path)
-     *
-     * @param dataPath The data path to process
-     * @return std::filesystem::path The plugin path derived from the data path, or the original path if it does not
-     * start with "meshes" or "textures"
-     */
-    static auto getPluginPathFromDataPath(const std::filesystem::path& dataPath) -> std::filesystem::path;
 };

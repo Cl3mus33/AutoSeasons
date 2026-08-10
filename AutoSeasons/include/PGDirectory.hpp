@@ -36,12 +36,6 @@ class PGModManager;
  * load order, deduces texture types from shader assignments, and maintains per-texture attribute and type metadata.
  */
 class PGDirectory : public BethesdaDirectory {
-public:
-    struct NifCache {
-        std::vector<std::pair<PGMeshPermutationTracker::FormKey, PGPlugin::MeshUseAttributes>>
-            meshUses; // list of mesh uses
-    };
-
 private:
     struct UnconfirmedTextureProperty {
         std::unordered_map<PGEnums::TextureSlots, size_t> slots;
@@ -63,18 +57,16 @@ private:
                NUM_TEXTURE_SLOTS>
         m_textureMaps;
     std::unordered_map<std::filesystem::path, TextureDetails> m_textureTypes;
-    std::unordered_map<std::filesystem::path, NifCache> m_meshes;
     std::unordered_set<std::filesystem::path> m_textures;
     std::vector<std::filesystem::path> m_pbrJSONs;
+    std::vector<std::filesystem::path> m_pbrTextureSetJSONs;
     std::vector<std::filesystem::path> m_lightPlacerJSONs;
 
     // Mutexes
     std::shared_mutex m_textureMapsMutex;
     std::shared_mutex m_textureTypesMutex;
-    std::shared_mutex m_meshesMutex;
     std::shared_mutex m_texturesMutex;
 
-    TaskQueue m_meshUseMappingQueue;
     TaskQueue m_CMClassificationQueue;
 
 public:
@@ -114,11 +106,6 @@ public:
                                            size_t)>& progressCallback = {}) -> void;
 
     /**
-     * @brief Blocks until all background plugin mesh-use mapping tasks have completed, then shuts down the queue.
-     */
-    void waitForMeshMapping();
-
-    /**
      * @brief Blocks until all background Complex Material classification tasks have completed, then shuts down the
      * queue.
      */
@@ -138,10 +125,6 @@ private:
                           const PGEnums::TextureSlots& slot,
                           const PGEnums::TextureType& type,
                           const std::unordered_set<PGEnums::TextureAttribute>& attributes) -> void;
-
-    void updateNifCache(const std::filesystem::path& path,
-                        const std::vector<std::pair<PGMeshPermutationTracker::FormKey,
-                                                    PGPlugin::MeshUseAttributes>>& meshUses);
 
     void checkIfCMAddToMap(const std::filesystem::path& texture,
                            const PGEnums::TextureSlots& winningSlot);
@@ -183,14 +166,6 @@ public:
                                              PGTypes::PGTextureHasher>>&;
 
     /**
-     * @brief Returns the map of all discovered NIF mesh files and their cached data.
-     *
-     * @return Const reference to the mesh map keyed by relative path.
-     */
-    [[nodiscard]] auto getMeshes() const -> const std::unordered_map<std::filesystem::path,
-                                                                     NifCache>&;
-
-    /**
      * @brief Returns the set of all discovered DDS texture file paths.
      *
      * @return Const reference to the set of texture paths.
@@ -203,6 +178,15 @@ public:
      * @return Const reference to the vector of PBR JSON paths.
      */
     [[nodiscard]] auto getPBRJSONs() const -> const std::vector<std::filesystem::path>&;
+
+    /**
+     * @brief Returns the ordered list of Community Shaders "PBRTextureSets" JSON configuration
+     * file paths (per-TextureSet-EditorID PBR rendering parameters, read by Community Shaders
+     * itself at runtime rather than consumed by PGPatcher).
+     *
+     * @return Const reference to the vector of PBR texture set JSON paths.
+     */
+    [[nodiscard]] auto getPBRTextureSetJSONs() const -> const std::vector<std::filesystem::path>&;
 
     /**
      * @brief Returns the ordered list of Light Placer JSON configuration file paths.

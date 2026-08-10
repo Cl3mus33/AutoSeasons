@@ -25,7 +25,7 @@ private:
 
 public:
     const static inline std::unordered_set<std::filesystem::path> s_foldersToMap
-        = {"meshes", "textures", "pbrnifpatcher", "lightplacer"};
+        = {"meshes", "textures", "pbrnifpatcher", "pbrtexturesets", "lightplacer"};
 
     /**
      * @brief Returns the global BethesdaGame instance.

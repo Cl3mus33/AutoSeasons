@@ -220,8 +220,14 @@ void BethesdaDirectory::clearGeneratedFiles()
 
 auto BethesdaDirectory::isLooseFile(const filesystem::path& relPath) -> bool
 {
-    if (m_fileMap.empty()) {
-        throw runtime_error("File map was not populated");
+    {
+        // Scoped separately from getFileFromMap()'s own internal lock below - m_fileMap is
+        // mutated under a unique_lock (addGeneratedFile/clearGeneratedFiles/updateFileMap), so
+        // reading .empty() without a lock here was a data race against those writers.
+        const shared_lock lock(m_fileMapMutex);
+        if (m_fileMap.empty()) {
+            throw runtime_error("File map was not populated");
+        }
     }
     const BethesdaFile file = getFileFromMap(relPath);
     return !file.path.empty() && file.bsaFile == nullptr;
@@ -229,8 +235,14 @@ auto BethesdaDirectory::isLooseFile(const filesystem::path& relPath) -> bool
 
 auto BethesdaDirectory::isBSAFile(const filesystem::path& relPath) -> bool
 {
-    if (m_fileMap.empty()) {
-        throw runtime_error("File map was not populated");
+    {
+        // Scoped separately from getFileFromMap()'s own internal lock below - m_fileMap is
+        // mutated under a unique_lock (addGeneratedFile/clearGeneratedFiles/updateFileMap), so
+        // reading .empty() without a lock here was a data race against those writers.
+        const shared_lock lock(m_fileMapMutex);
+        if (m_fileMap.empty()) {
+            throw runtime_error("File map was not populated");
+        }
     }
 
     const BethesdaFile file = getFileFromMap(relPath);
@@ -239,8 +251,14 @@ auto BethesdaDirectory::isBSAFile(const filesystem::path& relPath) -> bool
 
 auto BethesdaDirectory::isFile(const filesystem::path& relPath) -> bool
 {
-    if (m_fileMap.empty()) {
-        throw runtime_error("File map was not populated");
+    {
+        // Scoped separately from getFileFromMap()'s own internal lock below - m_fileMap is
+        // mutated under a unique_lock (addGeneratedFile/clearGeneratedFiles/updateFileMap), so
+        // reading .empty() without a lock here was a data race against those writers.
+        const shared_lock lock(m_fileMapMutex);
+        if (m_fileMap.empty()) {
+            throw runtime_error("File map was not populated");
+        }
     }
 
     const BethesdaFile file = getFileFromMap(relPath);
@@ -249,8 +267,14 @@ auto BethesdaDirectory::isFile(const filesystem::path& relPath) -> bool
 
 auto BethesdaDirectory::isGenerated(const filesystem::path& relPath) -> bool
 {
-    if (m_fileMap.empty()) {
-        throw runtime_error("File map was not populated");
+    {
+        // Scoped separately from getFileFromMap()'s own internal lock below - m_fileMap is
+        // mutated under a unique_lock (addGeneratedFile/clearGeneratedFiles/updateFileMap), so
+        // reading .empty() without a lock here was a data race against those writers.
+        const shared_lock lock(m_fileMapMutex);
+        if (m_fileMap.empty()) {
+            throw runtime_error("File map was not populated");
+        }
     }
 
     const BethesdaFile file = getFileFromMap(relPath);
@@ -259,8 +283,14 @@ auto BethesdaDirectory::isGenerated(const filesystem::path& relPath) -> bool
 
 auto BethesdaDirectory::getLooseFileFullPath(const filesystem::path& relPath) -> filesystem::path
 {
-    if (m_fileMap.empty()) {
-        throw runtime_error("File map was not populated");
+    {
+        // Scoped separately from getFileFromMap()'s own internal lock below - m_fileMap is
+        // mutated under a unique_lock (addGeneratedFile/clearGeneratedFiles/updateFileMap), so
+        // reading .empty() without a lock here was a data race against those writers.
+        const shared_lock lock(m_fileMapMutex);
+        if (m_fileMap.empty()) {
+            throw runtime_error("File map was not populated");
+        }
     }
 
     const BethesdaFile file = getFileFromMap(relPath);
@@ -619,17 +649,17 @@ void BethesdaDirectory::updateFileMap(const filesystem::path& filePath,
 auto BethesdaDirectory::isFileInBSA(const filesystem::path& file,
                                     const std::vector<std::wstring>& bsaFiles) -> bool
 {
-    if (isBSAFile(file)) {
-        BethesdaFile const bethFile = getFileFromMap(file);
-        std::filesystem::path const bsaFilepath = bethFile.bsaFile->path.filename();
-        const std::wstring bsaFilename = bsaFilepath.wstring();
-
-        if (std::ranges::any_of(
-                bsaFiles, [&bsaFilename](std::wstring const& file) { return boost::iequals(file, bsaFilename); })) {
-            return true;
-        }
+    // Single lookup instead of isBSAFile(file) followed by a second getFileFromMap(file) for the
+    // same path - this is called per unconfirmed texture during mapping, so the extra lock/lookup
+    // added up across a large modlist.
+    const BethesdaFile bethFile = getFileFromMap(file);
+    if (bethFile.path.empty() || bethFile.bsaFile == nullptr) {
+        return false;
     }
-    return false;
+
+    const std::wstring bsaFilename = bethFile.bsaFile->path.filename().wstring();
+    return std::ranges::any_of(
+        bsaFiles, [&bsaFilename](std::wstring const& file) { return boost::iequals(file, bsaFilename); });
 }
 
 auto BethesdaDirectory::convertWStringToLPCWSTRVector(const vector<wstring>& original) -> vector<LPCWSTR>
