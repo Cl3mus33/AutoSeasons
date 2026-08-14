@@ -104,3 +104,21 @@ add_custom_command(TARGET ${EXE_NAME} POST_BUILD
         ${CMAKE_CURRENT_SOURCE_DIR}/AS.ini
         $<TARGET_FILE_DIR:${EXE_NAME}>/AS.ini
 )
+
+#
+# OpenMP runtime (vcomp140.dll) - the one genuine VC++ runtime DLL this exe still dynamically
+# depends on despite the static CRT linkage set in the root CMakeLists.txt (Microsoft doesn't ship
+# a static OpenMP runtime). Confirmed via dumpbin /dependents. Copied from the toolset's own Redist
+# folder (populated by vcvars64.bat, which build.bat always calls first) rather than assuming the
+# target machine already has it.
+#
+if(NOT DEFINED ENV{VCToolsRedistDir})
+    message(FATAL_ERROR "VCToolsRedistDir is not set - configure/build from a Developer Command Prompt (or via vcvars64.bat, like build.bat does) so vcomp140.dll can be located.")
+endif()
+file(GLOB VCOMP140_DLL "$ENV{VCToolsRedistDir}x64/Microsoft.VC*.OpenMP/vcomp140.dll")
+list(GET VCOMP140_DLL 0 VCOMP140_DLL)
+add_custom_command(TARGET ${EXE_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${VCOMP140_DLL}"
+        $<TARGET_FILE_DIR:${EXE_NAME}>/vcomp140.dll
+)
