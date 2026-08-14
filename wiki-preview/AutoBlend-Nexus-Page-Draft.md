@@ -53,6 +53,11 @@ convention several texture mods already use), patches the mesh's `NiAlphaPropert
 alpha-testing to alpha-blending, and generates the plugin overrides to make it stick - all offline,
 no manual xEdit/mesh editing required.
 
+AutoBlend is also mod-order-aware when it patches: instead of blindly reverting a shape back to its
+vanilla texture set, it derives its output from whichever texture set that shape already carries
+after your other texture mods have applied - so a shape another mod has already retextured keeps
+that mod's own normal/other maps, and only the alpha-blend fix gets added on top.
+
 ### ⚠️ Pipeline order: run AutoSeasons first, then AutoBlend
 
 **This order matters.** If you also use [AutoSeasons](#) *(link once public)*, always run
