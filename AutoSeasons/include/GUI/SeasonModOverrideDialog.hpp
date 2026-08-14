@@ -1,0 +1,81 @@
+#pragma once
+
+#include "ASLocale.hpp"
+#include "common/BethesdaGame.hpp"
+
+#include <wx/wx.h>
+
+#include <filesystem>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+/**
+ * @brief Lets the user manage how AutoSeasons resolves conflicts between foreign mods' own
+ * Data/Seasons coverage:
+ *  - which mods (if any) AutoSeasons should override entirely - AutoSeasons generates its own
+ *    seasonal duplicate wherever it has the art, AND that mod's own raw ini line is dropped from
+ *    the merged output entirely (so a record AutoSeasons has no art for falls back to no swap,
+ *    rather than silently keeping the overridden mod's own swap);
+ *  - a cross-mod priority order used when two or more (non-overridden) foreign mods both declare
+ *    a swap for the very same base record - the mod lower in the list wins, matching Mod
+ *    Organizer's own left-pane priority convention (bottom = wins);
+ *  - an optional per-record-type override of both the above (e.g. overriding a mod, or preferring
+ *    a different one, just for TREE records without touching every other type).
+ * Scans the current game location for every distinct foreign season mod (via
+ * SeasonPatcher::discoverForeignSeasonMods()). Shown modally; on OK, getSelectedOverrides()/
+ * getPriorityOrder()/getOverridesByType()/getPriorityByType() return the edited settings.
+ */
+class SeasonModOverrideDialog : public wxDialog {
+public:
+    SeasonModOverrideDialog(wxWindow* parent, std::filesystem::path gameDir, BethesdaGame::GameType gameType,
+        const std::vector<std::wstring>& currentOverrides,
+        const std::unordered_map<std::string, std::vector<std::wstring>>& currentOverridesByType,
+        const std::vector<std::wstring>& currentPriority,
+        const std::unordered_map<std::string, std::vector<std::wstring>>& currentPriorityByType);
+
+    [[nodiscard]] auto getSelectedOverrides() const -> std::vector<std::wstring>;
+    /// @brief The global cross-mod priority order, top (lowest) to bottom (highest, wins).
+    [[nodiscard]] auto getPriorityOrder() const -> std::vector<std::wstring>;
+    [[nodiscard]] auto getOverridesByType() const -> std::unordered_map<std::string, std::vector<std::wstring>>;
+    [[nodiscard]] auto getPriorityByType() const -> std::unordered_map<std::string, std::vector<std::wstring>>;
+
+private:
+    std::filesystem::path m_gameDir;
+    BethesdaGame::GameType m_gameType;
+    std::vector<std::wstring> m_initialOverrides;
+    std::vector<std::wstring> m_initialPriority;
+    /// @brief Working copy of the per-type order, edited live as the user customizes each type.
+    std::unordered_map<std::string, std::vector<std::wstring>> m_priorityByType;
+    /// @brief Working copy of the per-type overrides, edited live as the user customizes each type.
+    std::unordered_map<std::string, std::vector<std::wstring>> m_overridesByType;
+
+    std::vector<std::wstring> m_modNames; ///< Index-matched to m_modList's rows, current global order.
+
+    wxCheckListBox* m_modList;
+    wxButton* m_moveUpButton;
+    wxButton* m_moveDownButton;
+    wxStaticText* m_statusText;
+
+    wxChoice* m_typeChoice;
+    wxCheckBox* m_customizeTypeCheckbox;
+    wxCheckListBox* m_typeOrderList; ///< Same checkbox+order pattern as m_modList, scoped to one record type.
+    wxButton* m_typeMoveUpButton;
+    wxButton* m_typeMoveDownButton;
+
+    void runScan();
+    [[nodiscard]] auto getCurrentTypeKey() const -> std::string;
+    void populateTypeOrderList();
+    void updateTypeControlsEnabled();
+    /// @brief Writes m_typeOrderList's current order+checked state back into m_priorityByType/m_overridesByType.
+    void saveTypeListState();
+
+    void onScanButtonPressed(wxCommandEvent& event);
+    void onMoveUpPressed(wxCommandEvent& event);
+    void onMoveDownPressed(wxCommandEvent& event);
+    void onTypeChoiceChanged(wxCommandEvent& event);
+    void onCustomizeTypeToggled(wxCommandEvent& event);
+    void onTypeListToggled(wxCommandEvent& event);
+    void onTypeMoveUpPressed(wxCommandEvent& event);
+    void onTypeMoveDownPressed(wxCommandEvent& event);
+};

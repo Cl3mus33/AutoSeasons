@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 /**
@@ -34,6 +35,30 @@ struct ASParams {
     // dead trees/vegetation (e.g. "DeadTree01") - already leafless/lifeless year-round, so a
     // seasonal duplicate would nonsensically bring one back to life for spring/summer.
     std::vector<std::wstring> seasonLockedEditorIDKeywords { L"coast", L"river", L"cave", L"dead" };
+    // Foreign mod display names (e.g. "Turn of the Seasons", matched case-insensitively against
+    // SeasonPatcher::discoverForeignSeasonMods()'s own modName) whose Data/Seasons coverage should
+    // be ignored - AutoSeasons generates its own seasonal duplicate for a record one of these mods
+    // covers, exactly as if that mod's ini didn't exist. Empty by default (the normal "always
+    // respect another mod's own declarations" behavior); populated via the Launcher's "Manage
+    // Season Mod Conflicts" dialog.
+    std::vector<std::wstring> overrideForeignSeasonMods;
+    // Per-record-type override of overrideForeignSeasonMods (key: "STAT"/"LTEX"/"ACTI"/"FURN"/
+    // "MSTT"/"TREE"/"FLOR") - additional mods to override for that record type specifically,
+    // without overriding them everywhere. Combined (union) with overrideForeignSeasonMods above,
+    // not a replacement for it - e.g. a mod can be left respected for STAT while being overridden
+    // for TREE. Populated via the Launcher's "Manage Season Mod Conflicts" dialog.
+    std::unordered_map<std::string, std::vector<std::wstring>> overrideForeignSeasonModsByType;
+    // Cross-mod priority order for foreign Data/Seasons content: when two or more (non-overridden)
+    // foreign mods both declare a swap for the very same base record, the mod later in this list
+    // wins in the merged ini. A mod not listed here keeps its previous (arbitrary, directory-scan)
+    // position. Empty by default. Populated via the Launcher's "Manage Season Mod Conflicts"
+    // dialog, alongside overrideForeignSeasonMods above.
+    std::vector<std::wstring> foreignSeasonModPriority;
+    // Per-record-type override of foreignSeasonModPriority (key: "STAT"/"LTEX"/"ACTI"/"FURN"/
+    // "MSTT"/"TREE"/"FLOR"), used instead of the global list for that type specifically when
+    // present and non-empty - e.g. preferring Nature of the Wild Lands over Turn of the Seasons
+    // for TREE records while still using the global order for everything else.
+    std::unordered_map<std::string, std::vector<std::wstring>> foreignSeasonModPriorityByType;
     // If true (default), any grass slot on a winter LTEX duplicate that has no detected winter
     // mesh variant of its own is dropped entirely (no grass drawn under snow) rather than
     // inheriting its year-round appearance. No GUI toggle for this - edit this key directly in
@@ -45,6 +70,12 @@ struct ASParams {
     // would make depending on a regular ESP (e.g. TerrainHelper.esp) unsafe. ESL-flagging (which
     // has no such restriction) is applied automatically and independently of this setting.
     int esmMode = 2;
+    // If true, run() performs the full scan and seasonal-duplication decision pass (so the log's
+    // breakdown/diagnostics are accurate) but writes nothing to outputDir - no previous output is
+    // cleared, no plugin/ini/PBR files are written. A per-run choice, not a persisted preference -
+    // deliberately never read from or written to AutoSeasons_config.json (see ASConfig::load/
+    // save), so it always defaults to false and has to be opted into each time.
+    bool dryRun = false;
 };
 
 /**

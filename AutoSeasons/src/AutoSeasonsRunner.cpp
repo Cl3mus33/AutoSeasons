@@ -11,6 +11,7 @@
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <array>
 #include <map>
 #include <memory>
@@ -19,11 +20,12 @@
 
 using namespace std;
 
-void AutoSeasonsRunner::run(ASParams& params,
+auto AutoSeasonsRunner::run(ASParams& params,
                             const filesystem::path& exePath,
                             const vector<spdlog::sink_ptr>& extraSinks,
-                            bool multithreading)
+                            bool multithreading) -> RunSummary
 {
+    const bool dryRun = params.dryRun;
     // Resolve to absolute paths immediately - relative paths depend on whatever working
     // directory the process happened to start in (which varies a lot when launched via MO2 or a
     // shortcut), so without this it's easy to lose track of where output actually went.
@@ -36,14 +38,37 @@ void AutoSeasonsRunner::run(ASParams& params,
     // (console for the CLI, a GUI log panel, etc). Console windows launched via MO2/Explorer
     // close the instant the process exits, so without a durable file there'd be no way to check
     // afterward what happened or where files went.
+    // Preserve whatever level a caller configured on the default logger before calling us (e.g.
+    // the CLI's -v/-vv flags) - constructing a brand new logger below would otherwise silently
+    // reset it to spdlog's built-in default (info), discarding that choice.
+    const auto requestedLevel = spdlog::default_logger()->level();
+    // The file sink always captures at least debug-level output, regardless of the visible
+    // console/GUI panel's own level - see the per-skip Logger::debug() calls throughout
+    // SeasonPatcher.cpp (e.g. "no seasonal sibling found for diffuse=..."). This is what lets "why
+    // didn't record X get a seasonal duplicate" be answered by grepping the log file afterward,
+    // instead of needing a custom diagnostic rebuild (which is what this project's own development
+    // had to resort to more than once before this existed).
+    const auto fileLevel = std::min(requestedLevel, spdlog::level::debug);
+
     const auto logPath = params.outputDir / "AutoSeasons.log";
+    auto fileSink = make_shared<spdlog::sinks::basic_file_sink_mt>(logPath.wstring(), true);
+    fileSink->set_level(fileLevel);
+
     vector<spdlog::sink_ptr> sinks = extraSinks;
-    sinks.push_back(make_shared<spdlog::sinks::basic_file_sink_mt>(logPath.wstring(), true));
+    for (const auto& sink : sinks) {
+        sink->set_level(requestedLevel); // keep the visible console/GUI panel at its caller-requested level
+    }
+    sinks.push_back(fileSink);
+
     const auto logger = make_shared<spdlog::logger>("AutoSeasons", sinks.begin(), sinks.end());
+    logger->set_level(fileLevel); // the logger-level gate must allow debug through to the file sink
     spdlog::set_default_logger(logger);
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
 
     spdlog::info("Welcome to AutoSeasons!");
+    if (dryRun) {
+        spdlog::info("[DRY RUN] Preview mode - nothing will be written to disk this run");
+    }
     spdlog::info("Game directory: {}", params.gameDir.string());
     spdlog::info("Output directory: {}", params.outputDir.string());
     spdlog::info("Log file: {}", logPath.string());
@@ -102,30 +127,35 @@ void AutoSeasonsRunner::run(ASParams& params,
         }
     }
 
-    // Clear this tool's own output from any previous run before regenerating - otherwise a file a
-    // prior run created (e.g. a PBRNIFPatcher rule for a texture no longer detected after a
-    // blocklist or load order change) lingers forever, since nothing else ever removes it.
-    // Deliberately scoped to exactly the artifact names/folders AutoSeasons itself ever writes,
-    // never a blanket wipe of outputDir - the equivalent() check above already guarantees this
-    // isn't the game's real Data folder, but outputDir could still in principle be a folder a user
-    // repurposed for something else too.
-    spdlog::info("Clearing previous output");
-    for (const auto& relPath : { filesystem::path("Seasons"), filesystem::path("PBRNIFPatcher"), filesystem::path("PBRTextureSets") }) {
-        error_code deleteEc;
-        filesystem::remove_all(params.outputDir / relPath, deleteEc);
-        if (deleteEc) {
-            spdlog::warn("Could not fully clear previous \"{}\" output ({}) - it may be open in another "
-                         "program (e.g. xEdit)",
-                relPath.string(), deleteEc.message());
+    if (dryRun) {
+        spdlog::info("[DRY RUN] Skipping output cleanup - no files on disk will be touched this run");
+    } else {
+        // Clear this tool's own output from any previous run before regenerating - otherwise a
+        // file a prior run created (e.g. a PBRNIFPatcher rule for a texture no longer detected
+        // after a blocklist or load order change) lingers forever, since nothing else ever removes
+        // it. Deliberately scoped to exactly the artifact names/folders AutoSeasons itself ever
+        // writes, never a blanket wipe of outputDir - the equivalent() check above already
+        // guarantees this isn't the game's real Data folder, but outputDir could still in
+        // principle be a folder a user repurposed for something else too.
+        spdlog::info("Clearing previous output");
+        for (const auto& relPath :
+            { filesystem::path("Seasons"), filesystem::path("PBRNIFPatcher"), filesystem::path("PBRTextureSets") }) {
+            error_code deleteEc;
+            filesystem::remove_all(params.outputDir / relPath, deleteEc);
+            if (deleteEc) {
+                spdlog::warn("Could not fully clear previous \"{}\" output ({}) - it may be open in another "
+                             "program (e.g. xEdit)",
+                    relPath.string(), deleteEc.message());
+            }
         }
-    }
-    {
-        error_code deleteEc;
-        filesystem::remove(params.outputDir / "AutoSeasons.esp", deleteEc);
-        if (deleteEc) {
-            spdlog::warn("Could not remove previous AutoSeasons.esp ({}) - it may be open in another "
-                         "program (e.g. xEdit)",
-                deleteEc.message());
+        {
+            error_code deleteEc;
+            filesystem::remove(params.outputDir / "AutoSeasons.esp", deleteEc);
+            if (deleteEc) {
+                spdlog::warn("Could not remove previous AutoSeasons.esp ({}) - it may be open in another "
+                             "program (e.g. xEdit)",
+                    deleteEc.message());
+            }
         }
     }
 
@@ -142,10 +172,13 @@ void AutoSeasonsRunner::run(ASParams& params,
     spdlog::info("Generating seasonal variation");
     std::vector<SeasonPatcher::PBRJsonRuleFile> pbrRules;
     std::vector<SeasonPatcher::PBRTextureSetFile> pbrTextureSets;
-    std::unordered_map<std::string, std::vector<std::wstring>> foreignRawLinesBySection;
+    std::unordered_map<std::string, std::vector<SeasonPatcher::ForeignRawLine>> foreignRawLinesBySection;
     std::vector<std::filesystem::path> foreignIniFilenames;
+    size_t unresolvedForeignConflictCount = 0;
     const auto seasonSwaps = SeasonPatcher::run(&pgd, params.meshBlockList, params.seasonLockedEditorIDKeywords,
-        params.removeGrassInWinter, pbrRules, pbrTextureSets, foreignRawLinesBySection, foreignIniFilenames);
+        params.removeGrassInWinter, params.overrideForeignSeasonMods, params.overrideForeignSeasonModsByType,
+        params.foreignSeasonModPriority, params.foreignSeasonModPriorityByType, pbrRules, pbrTextureSets,
+        foreignRawLinesBySection, foreignIniFilenames, unresolvedForeignConflictCount);
     spdlog::info("Seasonal variation: created {} duplicate record(s)", seasonSwaps.size());
 
     // Per-record-type breakdown - lets the user tell "this type genuinely has no seasonal
@@ -157,32 +190,49 @@ void AutoSeasonsRunner::run(ASParams& params,
     static constexpr std::array<const char*, 7> RECORD_TYPE_ORDER { "STAT", "LTEX", "ACTI", "FURN", "MSTT", "TREE",
         "FLOR" };
     std::string breakdown;
+    RunSummary summary;
+    summary.totalRecords = seasonSwaps.size();
+    summary.unresolvedForeignConflicts = unresolvedForeignConflictCount;
     for (const auto* recordType : RECORD_TYPE_ORDER) {
         if (!breakdown.empty()) {
             breakdown += ", ";
         }
         breakdown += string(recordType) + ": " + to_string(countsByType[recordType]);
+        summary.countsByType.emplace_back(recordType, countsByType[recordType]);
     }
     spdlog::info("Seasonal variation breakdown: {}", breakdown);
 
-    SeasonPatcher::writeIniFiles(params.outputDir, seasonSwaps, foreignRawLinesBySection);
-    if (!foreignIniFilenames.empty()) {
-        spdlog::info("Seasonal variation: folded {} other mod(s') own Data/Seasons ini into the merged AIO "
-                     "output and wrote a neutralizing override for each",
+    if (dryRun) {
+        spdlog::info("[DRY RUN] Would have folded {} other mod(s') own Data/Seasons ini into the merged AIO output",
             foreignIniFilenames.size());
-        SeasonPatcher::writeForeignIniOverrides(params.outputDir, foreignIniFilenames);
-    }
-    if (!pbrRules.empty()) {
-        spdlog::info("Seasonal variation: authored {} PBR json rule file(s) for a later PGPatcher run", pbrRules.size());
-        SeasonPatcher::writePBRJsonRules(params.outputDir, pbrRules);
-    }
-    if (!pbrTextureSets.empty()) {
-        spdlog::info("Seasonal variation: authored {} PBRTextureSets config(s) for Community Shaders", pbrTextureSets.size());
-        SeasonPatcher::writePBRTextureSetFiles(params.outputDir, pbrTextureSets);
-    }
+        spdlog::info("[DRY RUN] Would have authored {} PBR json rule file(s) for a later PGPatcher run", pbrRules.size());
+        spdlog::info(
+            "[DRY RUN] Would have authored {} PBRTextureSets config(s) for Community Shaders", pbrTextureSets.size());
+        spdlog::info("[DRY RUN] Would have saved AutoSeasons.esp - no files were written this run");
+    } else {
+        SeasonPatcher::writeIniFiles(params.outputDir, seasonSwaps, foreignRawLinesBySection);
+        if (!foreignIniFilenames.empty()) {
+            spdlog::info("Seasonal variation: folded {} other mod(s') own Data/Seasons ini into the merged AIO "
+                         "output and wrote a neutralizing override for each",
+                foreignIniFilenames.size());
+            SeasonPatcher::writeForeignIniOverrides(params.outputDir, foreignIniFilenames);
+        }
+        if (!pbrRules.empty()) {
+            spdlog::info(
+                "Seasonal variation: authored {} PBR json rule file(s) for a later PGPatcher run", pbrRules.size());
+            SeasonPatcher::writePBRJsonRules(params.outputDir, pbrRules);
+        }
+        if (!pbrTextureSets.empty()) {
+            spdlog::info(
+                "Seasonal variation: authored {} PBRTextureSets config(s) for Community Shaders", pbrTextureSets.size());
+            SeasonPatcher::writePBRTextureSetFiles(params.outputDir, pbrTextureSets);
+        }
 
-    spdlog::info("Saving plugin");
-    PGPlugin::savePlugin(params.outputDir, static_cast<PGPlugin::ESMMode>(params.esmMode));
+        spdlog::info("Saving plugin");
+        PGPlugin::savePlugin(params.outputDir, static_cast<PGPlugin::ESMMode>(params.esmMode));
+    }
 
     spdlog::info("Done!");
+
+    return summary;
 }

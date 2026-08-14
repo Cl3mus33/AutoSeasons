@@ -43,6 +43,31 @@ All notable changes to this project are documented here. Format loosely follows
   matters for the unrelated vanilla-parallax unlock).
 - PBR detection also recognizes textures placed directly under `textures\pbr\...`, not only
   records whose PBRNifPatcher rule folder structure was already inspected.
+- ESP-driven STAT/ACTI/FURN/MSTT/TREE/FLOR discovery: a record with its own explicit
+  `AlternateTextures` override is now found even when its mesh can't be resolved anywhere in the
+  merged Data view (e.g. a PBR/CM patcher that only outputs meshes it actually converts).
+- LTEX grass-mod texture retargeting: when a foreign mod's own `Data/Seasons` ini covers a base
+  landscape texture for grass only (same diffuse, different Grasses list), AutoSeasons now still
+  generates its own seasonal texture duplicate and reuses that mod's curated grass list instead of
+  skipping the record outright.
+- New "Manage Season Mod Conflicts" launcher dialog: per-foreign-mod override (let AutoSeasons win
+  over a specific mod's own coverage entirely) and cross-mod priority ordering (global, and
+  optionally per record type) for when two foreign mods both declare a swap for the same record.
+- Completion message now shows the actual per-record-type breakdown (or a distinct "0 records
+  created" message) instead of a generic "Generation complete" that reads the same either way.
+- Explicit in-launcher warning about running AutoSeasons through Mod Organizer 2/Vortex's tool list
+  rather than double-clicking the exe directly (the most common cause of a silently incomplete
+  scan).
+- Warns (in the log and completion message) when two or more foreign mods cover the same record
+  with no priority order configured between them, instead of silently picking whichever mod's ini
+  the directory scan happened to visit last.
+- Per-skip debug diagnostics throughout the seasonal-duplication pass (season-locked EditorID,
+  foreign coverage, no seasonal sibling found, etc.), always captured to the log file regardless of
+  the visible console/GUI verbosity - answers "why didn't record X get a seasonal duplicate" by
+  grepping the log instead of needing a custom diagnostic build.
+- `--dry-run` / "Preview only" mode: runs the full scan and decision pass and logs what would be
+  created without writing anything to the output directory - lets blocklist/keyword changes be
+  tried safely.
 
 ### Changed
 - Foreign `Data\Seasons\*.ini` files are now folded into one merged, authoritative AIO ini per

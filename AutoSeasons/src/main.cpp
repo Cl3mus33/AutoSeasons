@@ -104,9 +104,22 @@ void addArguments(CLI::App& app, AutoSeasonsCLIArgs& args)
                    "EditorID keywords (case-insensitive substring match, e.g. coast,river) for records to "
                    "exclude from seasonal swapping entirely")
         ->delimiter(',');
+    app.add_option("--override-season-mods", args.params.overrideForeignSeasonMods,
+                   "Foreign mod names (comma-separated, e.g. \"Turn of the Seasons\") whose Data/Seasons "
+                   "coverage AutoSeasons should override with its own generated textures")
+        ->delimiter(',');
+    app.add_option("--mod-priority", args.params.foreignSeasonModPriority,
+                   "Foreign mod names (comma-separated, lowest priority first) - when two foreign mods "
+                   "both cover the same record, the one listed later wins. Per-record-type overrides are "
+                   "config-file-only (foreignSeasonModPriorityByType in AutoSeasons_config.json)")
+        ->delimiter(',');
     app.add_flag("--remove-grass-in-winter,!--no-remove-grass-in-winter", args.params.removeGrassInWinter,
         "Drop grass slots with no detected winter mesh variant instead of leaving them visible under snow "
         "(default: on)");
+    app.add_flag("--dry-run", args.params.dryRun,
+                   "Run the full scan and log what would be created/skipped, but write nothing to the output "
+                   "directory - useful for iterating on --blocklist/--editor-id-blocklist safely")
+        ->default_val(false);
     app.add_option("--esm-mode", args.params.esmMode, "0 = ESM-flag output plugin, 1 = same, 2 = do not ESM-flag")
         ->default_val(0);
 }

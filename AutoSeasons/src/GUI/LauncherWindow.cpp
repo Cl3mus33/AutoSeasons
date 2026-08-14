@@ -1,5 +1,6 @@
 #include "GUI/LauncherWindow.hpp"
 
+#include "GUI/SeasonModOverrideDialog.hpp"
 #include "GUI/components/PGCustomListctrlChangedEvent.hpp"
 #include "common/BethesdaGame.hpp"
 #include "util/StringUtil.hpp"
@@ -37,6 +38,10 @@ auto makeSectionLabel(wxWindow* parent, const wxString& text) -> wxStaticText*
 LauncherWindow::LauncherWindow(const ASParams& initParams, filesystem::path exePath)
     : wxDialog(nullptr, wxID_ANY, "AutoSeasons", wxDefaultPosition, wxSize(560, 760), wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
     , m_exePath(std::move(exePath))
+    , m_overrideForeignSeasonMods(initParams.overrideForeignSeasonMods)
+    , m_overrideForeignSeasonModsByType(initParams.overrideForeignSeasonModsByType)
+    , m_foreignSeasonModPriority(initParams.foreignSeasonModPriority)
+    , m_foreignSeasonModPriorityByType(initParams.foreignSeasonModPriorityByType)
 {
     const wxIcon appIcon(wxICON(IDI_ICON1));
     SetIcon(appIcon);
@@ -77,6 +82,18 @@ LauncherWindow::LauncherWindow(const ASParams& initParams, filesystem::path exeP
     // Game location
     auto* gameLocationLabel = makeSectionLabel(generalPanel, ASTr("launcher.gameLocation.label", "Game Location"));
     generalSizer->Add(gameLocationLabel, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
+
+    // Running the exe directly (double-clicked from Explorer) only sees the game's real Data
+    // folder, not a mod manager's merged/virtual view of it - the single most common way a first
+    // run silently produces an incomplete result (it "succeeds", just against the wrong files).
+    auto* gameLocationWarning = new wxStaticText(generalPanel, wxID_ANY,
+        ASTr("launcher.gameLocation.mo2Warning",
+            "If you use Mod Organizer 2 or Vortex, run AutoSeasons through its tool list/dashboard, "
+            "not by double-clicking the exe in Explorer - otherwise it only sees your real Data "
+            "folder, not your installed mods, and silently produces an incomplete result."));
+    gameLocationWarning->SetForegroundColour(wxColour(180, 95, 0)); // amber - distinct from the accent green, reads as caution
+    gameLocationWarning->Wrap(490);
+    generalSizer->Add(gameLocationWarning, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
 
     m_gameLocationTextbox = new wxTextCtrl(generalPanel, wxID_ANY, initParams.gameDir.wstring());
     auto* gameBrowseButton = new wxButton(generalPanel, wxID_ANY, ASTr("common.browse", "Browse"));
@@ -173,6 +190,21 @@ LauncherWindow::LauncherWindow(const ASParams& initParams, filesystem::path exeP
     m_editorIDKeywordsCtrl->InsertItem(m_editorIDKeywordsCtrl->GetItemCount(), "");
 
     generalSizer->Add(m_editorIDKeywordsCtrl, 1, wxEXPAND | wxALL, BORDER_SIZE);
+
+    // Foreign season mod overrides - opens a separate dialog rather than an inline list, since
+    // populating it requires scanning the (possibly not-yet-saved) game location above, not just
+    // editing plain text like the two lists above it.
+    auto* seasonModOverridesButton = new wxButton(
+        generalPanel, wxID_ANY, ASTr("launcher.seasonModOverrides.button", "Manage Season Mod Conflicts..."));
+    seasonModOverridesButton->Bind(wxEVT_BUTTON, &LauncherWindow::onManageSeasonModOverrides, this);
+    generalSizer->Add(seasonModOverridesButton, 0, wxALL, BORDER_SIZE);
+
+    // Dry run - deliberately not persisted to config (ASParams::dryRun is never read from/written
+    // to AutoSeasons_config.json), so it always starts unchecked and has to be opted into for each
+    // run rather than silently staying on and confusing a future "why didn't anything change" run.
+    m_dryRunCheckbox = new wxCheckBox(generalPanel, wxID_ANY,
+        ASTr("launcher.dryRun.label", "Preview only (dry run) - scan and log what would happen, write nothing"));
+    generalSizer->Add(m_dryRunCheckbox, 0, wxALL, BORDER_SIZE);
 
     // ESM flag: always on (matches PGPatcher's own output plugin convention). ESL-flagging
     // happens automatically and safely based on record count, independent of this - not worth
@@ -304,6 +336,12 @@ void LauncherWindow::getParams(ASParams& outParams) const
             outParams.seasonLockedEditorIDKeywords.push_back(text.ToStdWstring());
         }
     }
+
+    outParams.overrideForeignSeasonMods = m_overrideForeignSeasonMods;
+    outParams.overrideForeignSeasonModsByType = m_overrideForeignSeasonModsByType;
+    outParams.foreignSeasonModPriority = m_foreignSeasonModPriority;
+    outParams.foreignSeasonModPriorityByType = m_foreignSeasonModPriorityByType;
+    outParams.dryRun = m_dryRunCheckbox->GetValue();
 }
 
 void LauncherWindow::onLanguageChanged([[maybe_unused]] wxCommandEvent& event)
@@ -345,6 +383,22 @@ void LauncherWindow::onBrowseOutputLocation([[maybe_unused]] wxCommandEvent& eve
         this, ASTr("launcher.outputLocation.dialogTitle", "Select Output Location"), m_outputLocationTextbox->GetValue());
     if (dialog.ShowModal() == wxID_OK) {
         m_outputLocationTextbox->SetValue(dialog.GetPath());
+    }
+}
+
+void LauncherWindow::onManageSeasonModOverrides([[maybe_unused]] wxCommandEvent& event)
+{
+    // Reads the live textbox/choice values (not initParams) so a game location just browsed to in
+    // this same session is what gets scanned, rather than whatever was loaded from config at
+    // window-open time.
+    SeasonModOverrideDialog dialog(this, m_gameLocationTextbox->GetValue().ToStdWstring(),
+        BethesdaGame::getGameTypes()[static_cast<size_t>(m_gameTypeChoice->GetSelection())], m_overrideForeignSeasonMods,
+        m_overrideForeignSeasonModsByType, m_foreignSeasonModPriority, m_foreignSeasonModPriorityByType);
+    if (dialog.ShowModal() == wxID_OK) {
+        m_overrideForeignSeasonMods = dialog.getSelectedOverrides();
+        m_overrideForeignSeasonModsByType = dialog.getOverridesByType();
+        m_foreignSeasonModPriority = dialog.getPriorityOrder();
+        m_foreignSeasonModPriorityByType = dialog.getPriorityByType();
     }
 }
 

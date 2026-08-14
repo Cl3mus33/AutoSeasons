@@ -74,6 +74,7 @@ private:
 ProgressWindow::ProgressWindow(const ASParams& params, const filesystem::path& exePath)
     : wxDialog(nullptr, wxID_ANY, "AutoSeasons", wxDefaultPosition, wxSize(420, 170), wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
     , m_pulseTimer(this)
+    , m_wasDryRun(params.dryRun)
 {
     const wxIcon appIcon(wxICON(IDI_ICON1));
     SetIcon(appIcon);
@@ -139,7 +140,7 @@ ProgressWindow::ProgressWindow(const ASParams& params, const filesystem::path& e
         try {
             ASParams localParams = params;
             const vector<spdlog::sink_ptr> sinks { make_shared<WxLogSink>(this) };
-            AutoSeasonsRunner::run(localParams, exePath, sinks);
+            m_runSummary = AutoSeasonsRunner::run(localParams, exePath, sinks);
         } catch (const exception& e) {
             success = false;
             const string message = e.what();
@@ -227,11 +228,53 @@ void ProgressWindow::onWorkerFinished(bool success)
     }
 
     if (success) {
-        wxMessageBox(
-            ASTr("progress.completion.message",
-                "Generation complete. Don't forget to enable AutoSeasons.esp in your mod manager's "
-                "plugin list if it isn't already active."),
-            ASTr("progress.completion.title", "AutoSeasons"), wxOK | wxICON_INFORMATION, this);
+        // A generic "Generation complete" reads identically whether 1,800 records were created or
+        // zero (e.g. the game/output directory was wrong, or the blocklist/keywords are too
+        // aggressive) - showing the real breakdown lets a user immediately tell a genuine "this
+        // load order has no seasonal content" apart from a misconfiguration, instead of assuming
+        // the run succeeded and only noticing nothing changed once back in-game.
+        wxString message;
+        if (m_runSummary.totalRecords == 0) {
+            message = m_wasDryRun
+                ? ASTr("progress.completion.zeroDryRunMessage",
+                      "Preview complete, but 0 seasonal records would be created. Double-check your game "
+                      "directory and blocklist/keyword settings - this usually means AutoSeasons didn't find "
+                      "the load order it expected.")
+                : ASTr("progress.completion.zeroMessage",
+                      "Generation complete, but 0 seasonal records were created. Double-check your game "
+                      "directory and blocklist/keyword settings - this usually means AutoSeasons didn't "
+                      "find the load order it expected.");
+        } else {
+            wxString breakdown;
+            for (const auto& [recordType, count] : m_runSummary.countsByType) {
+                if (!breakdown.IsEmpty()) {
+                    breakdown += ", ";
+                }
+                breakdown += wxString::Format("%s: %zu", wxString(recordType), count);
+            }
+            message = m_wasDryRun
+                ? wxString::Format(
+                      ASTr("progress.completion.dryRunMessage",
+                          "Preview complete - would create %zu seasonal record(s) (%s). Nothing was written to "
+                          "disk."),
+                      m_runSummary.totalRecords, breakdown)
+                : wxString::Format(
+                      ASTr("progress.completion.message",
+                          "Generation complete - created %zu seasonal record(s) (%s). Don't forget to enable "
+                          "AutoSeasons.esp in your mod manager's plugin list if it isn't already active."),
+                      m_runSummary.totalRecords, breakdown);
+
+            if (m_runSummary.unresolvedForeignConflicts > 0) {
+                message += wxString::Format(
+                    ASTr("progress.completion.conflictsSuffix",
+                        "\n\n%zu record/season combination(s) are covered by multiple foreign mods with no "
+                        "priority set between them - see the log, or open \"Manage Season Mod Conflicts\" in "
+                        "the launcher to resolve which one should win."),
+                    m_runSummary.unresolvedForeignConflicts);
+            }
+        }
+
+        wxMessageBox(message, ASTr("progress.completion.title", "AutoSeasons"), wxOK | wxICON_INFORMATION, this);
         // Dismissing this message box was previously a dead end - the dialog stayed open behind
         // it, requiring a second click on "Done - Close" for no reason. OK here means the same
         // thing as that button, so just close.

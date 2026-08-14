@@ -69,6 +69,18 @@ public:
     };
 
     /**
+     * @struct ForeignRawLine
+     * @brief One raw swap-pair line relayed verbatim from a foreign mod's own Data/Seasons ini,
+     * tagged with which mod it came from - the tag lets writeIniFiles() order same-section lines
+     * by the user's chosen cross-mod priority instead of an arbitrary directory-scan order (see
+     * run()'s foreignSeasonModPriority/foreignSeasonModPriorityByType parameters).
+     */
+    struct ForeignRawLine {
+        std::wstring modName; ///< The covering ini file's own name, e.g. "Turn of the Seasons".
+        std::wstring line; ///< The raw swap-pair line, exactly as read from that mod's own ini.
+    };
+
+    /**
      * @struct PBRJsonRuleFile
      * @brief One PBRNIFPatcher json rule, plus the path (relative to the output dir) it should be
      * written to - mirrors the source texture's own subfolder under Data\PBRNIFPatcher\.
@@ -77,6 +89,29 @@ public:
         std::filesystem::path relativePath; ///< e.g. "PBRNIFPatcher/landscape/dirt02_win.json"
         nlohmann::json rule;
     };
+
+    /**
+     * @struct ForeignSeasonModInfo
+     * @brief One foreign mod detected under Data/Seasons, plus how many record/season coverage
+     * entries it declares - for discoverForeignSeasonMods()'s GUI-facing mod list.
+     */
+    struct ForeignSeasonModInfo {
+        std::wstring modName; ///< The covering ini file's own name, e.g. "Turn of the Seasons".
+        size_t entryCount = 0; ///< Number of record/season combinations this mod covers.
+    };
+
+    /**
+     * @brief Scans Data/Seasons for every distinct foreign mod's own season-swap ini(s) and
+     * returns one entry per mod (not per file - a mod's WIN/SPR/SUM/AUT inis are merged into one
+     * entry), with a count of how many record/season coverage declarations it contributes. Used to
+     * populate the GUI's "Manage Season Mod Conflicts" picker before a real run, and reuses the
+     * exact same parsing run() itself relies on (see loadForeignSeasonCoverage() in the .cpp), so
+     * the list shown always matches what a real generation would actually see.
+     *
+     * @param dataDir The game's Data directory (a "Seasons" subfolder is read from under it).
+     * @return One entry per distinct foreign mod detected, sorted by name.
+     */
+    static auto discoverForeignSeasonMods(const std::filesystem::path& dataDir) -> std::vector<ForeignSeasonModInfo>;
 
     /**
      * @struct PBRTextureSetFile
@@ -100,25 +135,55 @@ public:
      * (case-insensitive substring match) are skipped entirely, e.g. "river"/"coast".
      * @param removeGrassInWinter If true, the winter LTEX duplicate's Grasses list is emptied
      * (no grass drawn under snow) instead of inheriting the base record's grass types.
+     * @param overrideForeignSeasonMods Foreign mod display names (matched case-insensitively
+     * against discoverForeignSeasonMods()'s own modName, e.g. "Turn of the Seasons") whose
+     * Data/Seasons coverage should be ignored entirely - AutoSeasons generates its own seasonal
+     * duplicate for a record one of these mods covers wherever it has the art, AND that mod's own
+     * raw ini line is dropped from the merged AIO ini (so a record AutoSeasons has no art for
+     * falls back to no swap at all, rather than silently keeping the overridden mod's own swap).
+     * Empty by default, preserving the normal "always respect another mod's own declarations"
+     * behavior.
+     * @param overrideForeignSeasonModsByType Per-record-type union with overrideForeignSeasonMods
+     * (key: "STAT"/"LTEX"/"ACTI"/"FURN"/"MSTT"/"TREE"/"FLOR") - lets a mod be overridden for one
+     * record type (e.g. TREE) without being overridden everywhere.
+     * @param foreignSeasonModPriority Cross-mod priority order (matched case-insensitively against
+     * discoverForeignSeasonMods()'s own modName) used when two or more NON-overridden foreign mods
+     * both declare a swap for the very same base record in the same merged ini - the mod later in
+     * this list wins (Seasons of Skyrim keeps the last value written for a given key). A mod not
+     * present in this list keeps its previously-arbitrary directory-scan position. Empty by
+     * default, preserving today's directory-scan order.
+     * @param foreignSeasonModPriorityByType Per-record-type override of foreignSeasonModPriority
+     * (key: "STAT"/"LTEX"/"ACTI"/"FURN"/"MSTT"/"TREE"/"FLOR"), used instead of the global list for
+     * that record type specifically when present and non-empty.
      * @param[out] outPBRRules One PBRNIFPatcher json rule file per unique seasonal PBR diffuse
      * texture found during the pass, for writePBRJsonRules().
      * @param[out] outPBRTextureSets One PBRTextureSets config per seasonal LTEX texture set whose
      * base TextureSet has an existing config to clone, for writePBRTextureSetFiles().
      * @param[out] outForeignRawLinesBySection Every other mod's own Data/Seasons swap-pair lines
-     * (verbatim), keyed by "SEASON|RecordType", for writeIniFiles() to fold into AutoSeasons' own
-     * merged AIO ini.
+     * (verbatim, tagged with their covering mod and already ordered per foreignSeasonModPriority/
+     * foreignSeasonModPriorityByType), keyed by "SEASON|RecordType", for writeIniFiles() to fold
+     * into AutoSeasons' own merged AIO ini.
      * @param[out] outForeignIniFilenames Every foreign ini file's own name whose content is now
      * folded into outForeignRawLinesBySection, for writeForeignIniOverrides().
+     * @param[out] outUnresolvedForeignConflictCount Number of record/season combinations covered
+     * by two or more different foreign mods with no priority order set between them (see the
+     * "Multiple foreign mods cover the same..." warning this same pass logs) - for callers that
+     * want to surface it in a completion summary, e.g. the GUI.
      * @return All base/swap FormID pairs created, across all seasons.
      */
     static auto run(PGDirectory* pgd,
                     const std::vector<std::wstring>& meshBlockList,
                     const std::vector<std::wstring>& seasonLockedEditorIDKeywords,
                     bool removeGrassInWinter,
+                    const std::vector<std::wstring>& overrideForeignSeasonMods,
+                    const std::unordered_map<std::string, std::vector<std::wstring>>& overrideForeignSeasonModsByType,
+                    const std::vector<std::wstring>& foreignSeasonModPriority,
+                    const std::unordered_map<std::string, std::vector<std::wstring>>& foreignSeasonModPriorityByType,
                     std::vector<PBRJsonRuleFile>& outPBRRules,
                     std::vector<PBRTextureSetFile>& outPBRTextureSets,
-                    std::unordered_map<std::string, std::vector<std::wstring>>& outForeignRawLinesBySection,
-                    std::vector<std::filesystem::path>& outForeignIniFilenames) -> std::vector<SwapEntry>;
+                    std::unordered_map<std::string, std::vector<ForeignRawLine>>& outForeignRawLinesBySection,
+                    std::vector<std::filesystem::path>& outForeignIniFilenames,
+                    size_t& outUnresolvedForeignConflictCount) -> std::vector<SwapEntry>;
 
     /**
      * @brief Writes one Data/Seasons/z_AIO_AutoSeasons_<SUFFIX>.ini file per season present in
@@ -139,7 +204,7 @@ public:
      * outForeignRawLinesBySection parameter.
      */
     static void writeIniFiles(const std::filesystem::path& outputDir, const std::vector<SwapEntry>& swaps,
-        const std::unordered_map<std::string, std::vector<std::wstring>>& foreignRawLinesBySection);
+        const std::unordered_map<std::string, std::vector<ForeignRawLine>>& foreignRawLinesBySection);
 
     /**
      * @brief Writes an empty (comment-only) override for each foreign Data/Seasons ini file whose

@@ -90,6 +90,38 @@ auto ASConfig::load(const filesystem::path& exeDir) -> ASParams
         if (configJ.contains("removeGrassInWinter")) {
             params.removeGrassInWinter = configJ["removeGrassInWinter"].get<bool>();
         }
+        if (configJ.contains("overrideForeignSeasonMods")) {
+            params.overrideForeignSeasonMods.clear();
+            for (const auto& item : configJ["overrideForeignSeasonMods"]) {
+                params.overrideForeignSeasonMods.push_back(StringUtil::utf8toUTF16(item.get<string>()));
+            }
+        }
+        if (configJ.contains("overrideForeignSeasonModsByType")) {
+            params.overrideForeignSeasonModsByType.clear();
+            for (const auto& [typeKey, arr] : configJ["overrideForeignSeasonModsByType"].items()) {
+                vector<wstring> list;
+                for (const auto& item : arr) {
+                    list.push_back(StringUtil::utf8toUTF16(item.get<string>()));
+                }
+                params.overrideForeignSeasonModsByType[typeKey] = std::move(list);
+            }
+        }
+        if (configJ.contains("foreignSeasonModPriority")) {
+            params.foreignSeasonModPriority.clear();
+            for (const auto& item : configJ["foreignSeasonModPriority"]) {
+                params.foreignSeasonModPriority.push_back(StringUtil::utf8toUTF16(item.get<string>()));
+            }
+        }
+        if (configJ.contains("foreignSeasonModPriorityByType")) {
+            params.foreignSeasonModPriorityByType.clear();
+            for (const auto& [typeKey, arr] : configJ["foreignSeasonModPriorityByType"].items()) {
+                vector<wstring> list;
+                for (const auto& item : arr) {
+                    list.push_back(StringUtil::utf8toUTF16(item.get<string>()));
+                }
+                params.foreignSeasonModPriorityByType[typeKey] = std::move(list);
+            }
+        }
     } catch (const exception& e) {
         Logger::warn("Failed to parse config file, using defaults: {}", e.what());
         return ASParams {};
@@ -117,6 +149,30 @@ void ASConfig::save(const filesystem::path& exeDir, const ASParams& params)
         configJ["seasonLockedEditorIDKeywords"].push_back(StringUtil::utf16toUTF8(item));
     }
     configJ["removeGrassInWinter"] = params.removeGrassInWinter;
+    configJ["overrideForeignSeasonMods"] = nlohmann::json::array();
+    for (const auto& item : params.overrideForeignSeasonMods) {
+        configJ["overrideForeignSeasonMods"].push_back(StringUtil::utf16toUTF8(item));
+    }
+    configJ["overrideForeignSeasonModsByType"] = nlohmann::json::object();
+    for (const auto& [typeKey, list] : params.overrideForeignSeasonModsByType) {
+        auto arr = nlohmann::json::array();
+        for (const auto& item : list) {
+            arr.push_back(StringUtil::utf16toUTF8(item));
+        }
+        configJ["overrideForeignSeasonModsByType"][typeKey] = arr;
+    }
+    configJ["foreignSeasonModPriority"] = nlohmann::json::array();
+    for (const auto& item : params.foreignSeasonModPriority) {
+        configJ["foreignSeasonModPriority"].push_back(StringUtil::utf16toUTF8(item));
+    }
+    configJ["foreignSeasonModPriorityByType"] = nlohmann::json::object();
+    for (const auto& [typeKey, list] : params.foreignSeasonModPriorityByType) {
+        auto arr = nlohmann::json::array();
+        for (const auto& item : list) {
+            arr.push_back(StringUtil::utf16toUTF8(item));
+        }
+        configJ["foreignSeasonModPriorityByType"][typeKey] = arr;
+    }
 
     ofstream file(getConfigPath(exeDir));
     if (!file.is_open()) {

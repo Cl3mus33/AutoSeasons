@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ASConfig.hpp"
+#include "AutoSeasonsRunner.hpp"
 
 #include <wx/collpane.h>
 #include <wx/gauge.h>
@@ -38,6 +39,8 @@ private:
     wxButton* m_closeButton;
     wxTimer m_pulseTimer;
     std::thread m_workerThread;
+    AutoSeasonsRunner::RunSummary m_runSummary;
+    bool m_wasDryRun;
 
     void onWorkerFinished(bool success);
     void onCloseButtonPressed(wxCommandEvent& event);

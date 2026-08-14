@@ -618,6 +618,24 @@ struct ForeignSeasonCoverage {
     unordered_map<wstring, wstring> targetByFormIDKey;
     unordered_map<wstring, wstring> targetByEditorIDKey;
 
+    // Mirrors byFormID/byEditorID exactly (same composed keys) again, but records WHICH foreign
+    // mod (the covering ini file's own name, e.g. "Turn of the Seasons") contributed this coverage
+    // entry - unlike targetByFormIDKey/targetByEditorIDKey this is populated unconditionally
+    // (every coverage entry has a covering mod, not every one has a captured target), so a caller
+    // can let the user selectively re-enable AutoSeasons' own generation for one specific foreign
+    // mod's declarations without losing the "respect other mods" default for everyone else - see
+    // getCoveringMod() and discoverForeignSeasonMods().
+    unordered_map<wstring, wstring> coveringModByFormIDKey;
+    unordered_map<wstring, wstring> coveringModByEditorIDKey;
+
+    // Every DISTINCT foreign mod that has declared coverage for a given composite key - unlike
+    // coveringModBy*Key above (which only remembers the last one seen), this lets run() detect
+    // when two or more different foreign mods genuinely compete for the very same base record, so
+    // it can warn the user when that conflict isn't resolved by an explicit priority order (see
+    // the "unresolved foreign-mod conflict" warning in run()).
+    unordered_map<wstring, unordered_set<wstring>> allCoveringModsByFormIDKey;
+    unordered_map<wstring, unordered_set<wstring>> allCoveringModsByEditorIDKey;
+
     // EditorIDs that are themselves already the SEASONAL TARGET side of some foreign mod's own
     // swap declaration (e.g. Nature of the Wild Lands' own "beech_common_big01_autumn", which its
     // "_AUT.ini" already swaps into every autumn from "beech_common_big01_summer") - not season-
@@ -633,8 +651,11 @@ struct ForeignSeasonCoverage {
     // EditorID-pair syntaxes correctly today, so relaying the exact same text into our own merged
     // AIO ini needs no re-interpretation. Used to fold every other mod's own season-swap
     // declarations into one authoritative AutoSeasons file instead of leaving them scattered
-    // across several inis for Seasons of Skyrim's alphabetical-priority system to sort out.
-    unordered_map<string, vector<wstring>> rawLinesBySection;
+    // across several inis for Seasons of Skyrim's alphabetical-priority system to sort out. Each
+    // line is tagged with its covering mod (see SeasonPatcher::ForeignRawLine) so run() can later
+    // order same-section lines by the user's chosen cross-mod priority rather than whatever
+    // arbitrary order the directory scan below visited files in.
+    unordered_map<string, vector<SeasonPatcher::ForeignRawLine>> rawLinesBySection;
 
     // Every foreign ini file's own name (e.g. "Nature of the Wild Lands_WIN.ini") whose content is
     // now fully folded into rawLinesBySection - used to write a neutralizing empty override for
@@ -667,6 +688,25 @@ struct ForeignSeasonCoverage {
         if (!editorID.empty()) {
             if (const auto it = targetByEditorIDKey.find(composeForeignCoverageEditorIDKey(season, recordType, editorID));
                 it != targetByEditorIDKey.end()) {
+                return it->second;
+            }
+        }
+        return nullopt;
+    }
+
+    // Mirrors getForeignTarget()'s two-branch lookup exactly, but returns the covering mod's own
+    // display name (e.g. "Turn of the Seasons") instead of the swap target - lets a caller decide
+    // whether the user has asked to override THIS specific mod's coverage.
+    [[nodiscard]] auto getCoveringMod(string_view season, string_view recordType, const wstring& modName,
+        unsigned int formID, const wstring& editorID) const -> optional<wstring>
+    {
+        if (const auto it = coveringModByFormIDKey.find(composeForeignCoverageKey(season, recordType, modName, formID));
+            it != coveringModByFormIDKey.end()) {
+            return it->second;
+        }
+        if (!editorID.empty()) {
+            if (const auto it = coveringModByEditorIDKey.find(composeForeignCoverageEditorIDKey(season, recordType, editorID));
+                it != coveringModByEditorIDKey.end()) {
                 return it->second;
             }
         }
@@ -732,6 +772,7 @@ auto loadForeignSeasonCoverage(const filesystem::path& seasonsDir) -> ForeignSea
         }
 
         string_view season;
+        size_t seasonSuffixLen = 4;
         if (stem.ends_with(L"_win")) {
             season = "WIN";
         } else if (stem.ends_with(L"_spr")) {
@@ -743,6 +784,13 @@ auto loadForeignSeasonCoverage(const filesystem::path& seasonsDir) -> ForeignSea
         } else {
             continue; // not a season-suffixed ini Seasons of Skyrim would read seasonally
         }
+
+        // Original-casing filename stem minus the season suffix, e.g. "Turn of the Seasons_SUM.ini"
+        // -> "Turn of the Seasons" - the mod's own display name, for coveringModBy*Key below and
+        // discoverForeignSeasonMods()'s GUI-facing mod list. Kept separate from the lowercased
+        // `stem` above (which only exists for case-insensitive classification).
+        const auto origStem = dirEntry.path().stem().wstring();
+        const auto modDisplayName = origStem.substr(0, origStem.size() - seasonSuffixLen);
 
         ifstream file(dirEntry.path());
         if (!file.is_open()) {
@@ -785,7 +833,8 @@ auto loadForeignSeasonCoverage(const filesystem::path& seasonsDir) -> ForeignSea
             // used to be the only one that looked at it at all, via its own local recomputation).
             const auto rightSide = pipePos != string::npos ? line.substr(pipePos + 1) : string();
             if (pipePos != string::npos) {
-                coverage.rawLinesBySection[string(season) + "|" + currentRecordType].push_back(StringUtil::utf8toUTF16(line));
+                coverage.rawLinesBySection[string(season) + "|" + currentRecordType].push_back(
+                    SeasonPatcher::ForeignRawLine { .modName = modDisplayName, .line = StringUtil::utf8toUTF16(line) });
             }
 
             const auto tildePos = leftSide.find('~');
@@ -795,6 +844,8 @@ auto loadForeignSeasonCoverage(const filesystem::path& seasonsDir) -> ForeignSea
                     const auto editorIDKey
                         = composeForeignCoverageEditorIDKey(season, currentRecordType, StringUtil::utf8toUTF16(leftSide));
                     coverage.byEditorID.insert(editorIDKey);
+                    coverage.coveringModByEditorIDKey[editorIDKey] = modDisplayName;
+                    coverage.allCoveringModsByEditorIDKey[editorIDKey].insert(modDisplayName);
                     if (!rightSide.empty()) {
                         coverage.targetByEditorIDKey[editorIDKey] = StringUtil::utf8toUTF16(rightSide);
                     }
@@ -819,6 +870,8 @@ auto loadForeignSeasonCoverage(const filesystem::path& seasonsDir) -> ForeignSea
             const auto modName = StringUtil::utf8toUTF16(leftSide.substr(tildePos + 1));
             const auto formIDKey = composeForeignCoverageKey(season, currentRecordType, modName, formID);
             coverage.byFormID.insert(formIDKey);
+            coverage.coveringModByFormIDKey[formIDKey] = modDisplayName;
+            coverage.allCoveringModsByFormIDKey[formIDKey].insert(modDisplayName);
             if (!rightSide.empty()) {
                 coverage.targetByFormIDKey[formIDKey] = StringUtil::utf8toUTF16(rightSide);
             }
@@ -833,6 +886,32 @@ auto loadForeignSeasonCoverage(const filesystem::path& seasonsDir) -> ForeignSea
 
     return coverage;
 }
+}
+
+auto SeasonPatcher::discoverForeignSeasonMods(const std::filesystem::path& dataDir)
+    -> std::vector<SeasonPatcher::ForeignSeasonModInfo>
+{
+    // Reuses loadForeignSeasonCoverage()'s full ini-parsing pass rather than re-implementing a
+    // separate lightweight filename scan - it's plain text-file parsing (no mesh/texture work), so
+    // cheap enough to run synchronously from the GUI, and this way the mod list shown to the user
+    // is guaranteed to match exactly what a real generation run would see.
+    const auto coverage = loadForeignSeasonCoverage(dataDir / "Seasons");
+
+    std::unordered_map<std::wstring, size_t> countByMod;
+    for (const auto& [key, modName] : coverage.coveringModByFormIDKey) {
+        countByMod[modName]++;
+    }
+    for (const auto& [key, modName] : coverage.coveringModByEditorIDKey) {
+        countByMod[modName]++;
+    }
+
+    std::vector<ForeignSeasonModInfo> result;
+    result.reserve(countByMod.size());
+    for (const auto& [modName, count] : countByMod) {
+        result.push_back(ForeignSeasonModInfo { .modName = modName, .entryCount = count });
+    }
+    std::ranges::sort(result, {}, &ForeignSeasonModInfo::modName);
+    return result;
 }
 
 auto SeasonPatcher::buildSeasonalSlots(PGDirectory* pgd,
@@ -951,14 +1030,52 @@ auto SeasonPatcher::buildSeasonalSlots(PGDirectory* pgd,
 
 auto SeasonPatcher::run(PGDirectory* pgd, const std::vector<std::wstring>& meshBlockList,
     const std::vector<std::wstring>& seasonLockedEditorIDKeywords, bool removeGrassInWinter,
+    const std::vector<std::wstring>& overrideForeignSeasonMods,
+    const std::unordered_map<std::string, std::vector<std::wstring>>& overrideForeignSeasonModsByType,
+    const std::vector<std::wstring>& foreignSeasonModPriority,
+    const std::unordered_map<std::string, std::vector<std::wstring>>& foreignSeasonModPriorityByType,
     std::vector<PBRJsonRuleFile>& outPBRRules, std::vector<PBRTextureSetFile>& outPBRTextureSets,
-    std::unordered_map<std::string, std::vector<std::wstring>>& outForeignRawLinesBySection,
-    std::vector<std::filesystem::path>& outForeignIniFilenames) -> std::vector<SwapEntry>
+    std::unordered_map<std::string, std::vector<ForeignRawLine>>& outForeignRawLinesBySection,
+    std::vector<std::filesystem::path>& outForeignIniFilenames,
+    size_t& outUnresolvedForeignConflictCount) -> std::vector<SwapEntry>
 {
     vector<SwapEntry> allSwaps;
     size_t seasonLockedSkipCount = 0;
     size_t foreignCoverageSkipCount = 0;
     auto foreignCoverage = loadForeignSeasonCoverage(pgd->getDataPath() / "Seasons");
+
+    // Case-insensitive lookup set for the user's chosen foreign-mod overrides - built once here
+    // rather than per-record, since it never changes during this run. Empty by default, which
+    // makes every isCovered()-then-getCoveringMod() check below behave exactly as it did before
+    // this feature existed.
+    unordered_set<wstring> overrideModsSet;
+    for (const auto& modName : overrideForeignSeasonMods) {
+        overrideModsSet.insert(boost::algorithm::to_lower_copy(modName));
+    }
+
+    // Per-record-type effective override set - computed once for all seven record types rather
+    // than per-record, and reused for the STAT/LTEX loops' bypass checks, the conflict warning
+    // below, and the raw-line-suppression filter further down. A type present in
+    // overrideForeignSeasonModsByType REPLACES the global list entirely for that type (even if the
+    // per-type list is empty, meaning "override nobody for this type" regardless of what's
+    // globally overridden) - the GUI only ever stores an entry once the user has explicitly turned
+    // on "Customize" for that type, so presence itself (not non-emptiness) is the right signal.
+    // Mirrors foreignSeasonModPriorityByType's own "present -> replaces global" semantics below,
+    // rather than adding to the global list, so a mod can be excluded from override for one
+    // specific type without needing to also leave the global list.
+    static constexpr array<const char*, 7> ALL_RECORD_TYPES { "STAT", "LTEX", "ACTI", "FURN", "MSTT", "TREE", "FLOR" };
+    unordered_map<string, unordered_set<wstring>> overrideSetByType;
+    for (const auto* recordType : ALL_RECORD_TYPES) {
+        auto& set = overrideSetByType[recordType];
+        if (const auto it = overrideForeignSeasonModsByType.find(recordType); it != overrideForeignSeasonModsByType.end()) {
+            for (const auto& modName : it->second) {
+                set.insert(boost::algorithm::to_lower_copy(modName));
+            }
+        } else {
+            set = overrideModsSet;
+        }
+    }
+
     Logger::info("Foreign season coverage: {} FormID-based entr(y/ies), {} EditorID-based entr(y/ies) from {} ini file(s): {}",
         foreignCoverage.byFormID.size(), foreignCoverage.byEditorID.size(), foreignCoverage.foreignIniFilenames.size(),
         [&] {
@@ -971,6 +1088,72 @@ auto SeasonPatcher::run(PGDirectory* pgd, const std::vector<std::wstring>& meshB
             }
             return names;
         }());
+
+    // Warn about foreign-mod conflicts the user hasn't resolved: two or more DIFFERENT foreign
+    // mods both declaring coverage for the very same base record/season, with none of the
+    // involved mods present in the effective priority list for that record type. Today's winner
+    // in that case is whichever mod's ini the directory scan happened to visit last (see the
+    // priority stable_sort further below) - an outcome the user has no way to predict without
+    // this pointing them at "Manage Season Mod Conflicts".
+    size_t unresolvedForeignConflictCount = 0;
+    const auto reportConflicts = [&](const unordered_map<wstring, unordered_set<wstring>>& modsByKey) {
+        for (const auto& [key, mods] : modsByKey) {
+            if (mods.size() < 2) {
+                continue; // only one mod claims this record - nothing to arbitrate
+            }
+
+            // Keys are "SEASON|RecordType|..." - only the record-type segment selects a priority list.
+            const auto firstPipe = key.find(L'|');
+            const auto secondPipe = firstPipe != wstring::npos ? key.find(L'|', firstPipe + 1) : wstring::npos;
+            const auto recordType = (firstPipe != wstring::npos && secondPipe != wstring::npos)
+                ? StringUtil::utf16toUTF8(key.substr(firstPipe + 1, secondPipe - firstPipe - 1))
+                : string();
+
+            const auto& priorityList = [&]() -> const vector<wstring>& {
+                if (const auto it = foreignSeasonModPriorityByType.find(recordType);
+                    it != foreignSeasonModPriorityByType.end() && !it->second.empty()) {
+                    return it->second;
+                }
+                return foreignSeasonModPriority;
+            }();
+
+            const auto& effectiveOverrides = overrideSetByType[recordType];
+            const bool anyResolved = ranges::any_of(mods, [&](const wstring& mod) {
+                const auto modLower = boost::algorithm::to_lower_copy(mod);
+                if (effectiveOverrides.contains(modLower)) {
+                    return true; // this mod is overridden for this type - no longer really "in the running"
+                }
+                return ranges::any_of(priorityList, [&](const wstring& ranked) {
+                    return boost::algorithm::to_lower_copy(ranked) == modLower;
+                });
+            });
+            if (anyResolved) {
+                continue; // the user has an explicit priority order or override covering at least one of these mods
+            }
+
+            unresolvedForeignConflictCount++;
+            if (unresolvedForeignConflictCount <= 10) { // cap detailed log spam on a load order with many conflicts
+                string modNames;
+                for (const auto& mod : mods) {
+                    if (!modNames.empty()) {
+                        modNames += ", ";
+                    }
+                    modNames += StringUtil::utf16toUTF8(mod);
+                }
+                Logger::warn("Multiple foreign mods cover the same {} record with no priority order set between "
+                             "them ({}) - the winner is currently arbitrary",
+                    recordType, modNames);
+            }
+        }
+    };
+    reportConflicts(foreignCoverage.allCoveringModsByFormIDKey);
+    reportConflicts(foreignCoverage.allCoveringModsByEditorIDKey);
+    if (unresolvedForeignConflictCount > 0) {
+        Logger::warn("{} record/season combination(s) are covered by multiple foreign mods with no priority set "
+                     "between them (see above for the first few) - open \"Manage Season Mod Conflicts\" in the "
+                     "launcher to resolve which one should win",
+            unresolvedForeignConflictCount);
+    }
 
     // Batch requests per (season, recordType) so we make one Mutagen call per group instead of
     // one per record, and so results (which don't echo record type) can still be attributed
@@ -1136,11 +1319,14 @@ auto SeasonPatcher::run(PGDirectory* pgd, const std::vector<std::wstring>& meshB
                 = string(EnumStringHelper::stringFromEnum(attrs.recType, PGPlugin::MODEL_RECORD_TYPE_TABLE, ""));
 
             if (attrs.isIgnored || attrs.isDummyUse) {
+                Logger::debug(L"[{}] skipped: record flagged ignored (isIgnored={}, isDummyUse={})", attrs.editorID,
+                    attrs.isIgnored, attrs.isDummyUse);
                 continue;
             }
 
             if (hasSeasonLockedEditorID(attrs.editorID, seasonLockedEditorIDKeywords)) {
                 seasonLockedSkipCount++;
+                Logger::debug(L"[{}] skipped: EditorID matches a season-locked keyword", attrs.editorID);
                 continue;
             }
 
@@ -1177,13 +1363,27 @@ auto SeasonPatcher::run(PGDirectory* pgd, const std::vector<std::wstring>& meshB
             }
 
             if (baseShapes.empty()) {
+                Logger::debug(
+                    L"[{}] skipped: no shapes with a usable texture (no AlternateTextures override and mesh not "
+                    L"found: {})",
+                    attrs.editorID, meshPath.wstring());
                 continue;
             }
 
+            const auto& typeOverrides = overrideSetByType.at(recTypeStr);
             for (const auto season : SEASONS) {
                 if (foreignCoverage.isCovered(season, recTypeStr, formKey.modKey, formKey.formID, attrs.editorID)) {
-                    foreignCoverageSkipCount++;
-                    continue; // another mod's Data/Seasons ini already covers this record for this season
+                    const auto coveringMod
+                        = foreignCoverage.getCoveringMod(season, recTypeStr, formKey.modKey, formKey.formID, attrs.editorID);
+                    if (!coveringMod.has_value()
+                        || !typeOverrides.contains(boost::algorithm::to_lower_copy(*coveringMod))) {
+                        foreignCoverageSkipCount++;
+                        Logger::debug(L"[{}] season={} skipped: already covered by foreign mod \"{}\"", attrs.editorID,
+                            StringUtil::utf8toUTF16(string(season)), coveringMod.value_or(L"?"));
+                        continue; // another mod's Data/Seasons ini already covers this record for this season
+                    }
+                    // else: the user asked to override this specific mod - fall through and
+                    // generate our own duplicate as if this record weren't covered at all.
                 }
 
                 vector<PGMutagenWrapper::SeasonalTextureOverride> overrides;
@@ -1191,6 +1391,9 @@ auto SeasonPatcher::run(PGDirectory* pgd, const std::vector<std::wstring>& meshB
                 for (const auto& baseShape : baseShapes) {
                     const auto seasonResult = buildSeasonalSlots(pgd, baseShape.slots, season, false, pbrConfigIndex);
                     if (!seasonResult.has_value()) {
+                        Logger::debug(L"[{}] season={} shape idx={}: no seasonal sibling found for diffuse={}",
+                            attrs.editorID, StringUtil::utf8toUTF16(string(season)), baseShape.shapeIndex,
+                            baseShape.slots.at(DIFFUSE_SLOT));
                         continue; // this shape has no seasonal sibling for this season
                     }
 
@@ -1302,25 +1505,40 @@ auto SeasonPatcher::run(PGDirectory* pgd, const std::vector<std::wstring>& meshB
             // current LandscapeTextureEntry when this applies; empty otherwise (today's plain skip).
             optional<PGMutagenWrapper::LandscapeTextureEntry> borrowedGrassSource;
             if (foreignCoverage.isCovered(season, "LTEX", entry.modName, entry.formID, entry.editorID)) {
-                if (const auto targetRaw
-                    = foreignCoverage.getForeignTarget(season, "LTEX", entry.modName, entry.formID, entry.editorID);
-                    targetRaw.has_value()) {
-                    if (const auto found = resolveForeignLTEXTarget(*targetRaw, ltexByFormKey, ltexByEditorID);
-                        found.has_value()
-                        && boost::algorithm::to_lower_copy(found->slots.at(DIFFUSE_SLOT))
-                            == boost::algorithm::to_lower_copy(entry.slots.at(DIFFUSE_SLOT))) {
-                        borrowedGrassSource = found;
+                const auto coveringMod
+                    = foreignCoverage.getCoveringMod(season, "LTEX", entry.modName, entry.formID, entry.editorID);
+                const bool userOverridden = coveringMod.has_value()
+                    && overrideSetByType.at("LTEX").contains(boost::algorithm::to_lower_copy(*coveringMod));
+
+                if (!userOverridden) {
+                    if (const auto targetRaw
+                        = foreignCoverage.getForeignTarget(season, "LTEX", entry.modName, entry.formID, entry.editorID);
+                        targetRaw.has_value()) {
+                        if (const auto found = resolveForeignLTEXTarget(*targetRaw, ltexByFormKey, ltexByEditorID);
+                            found.has_value()
+                            && boost::algorithm::to_lower_copy(found->slots.at(DIFFUSE_SLOT))
+                                == boost::algorithm::to_lower_copy(entry.slots.at(DIFFUSE_SLOT))) {
+                            borrowedGrassSource = found;
+                        }
+                    }
+
+                    if (!borrowedGrassSource.has_value()) {
+                        foreignCoverageSkipCount++;
+                        Logger::debug(L"[{}] season={} skipped: LTEX already covered by foreign mod \"{}\" (not a "
+                                     L"grass-only patch)",
+                            entry.editorID, StringUtil::utf8toUTF16(string(season)), coveringMod.value_or(L"?"));
+                        continue; // genuinely another mod's own territory - leave it alone, as before
                     }
                 }
-
-                if (!borrowedGrassSource.has_value()) {
-                    foreignCoverageSkipCount++;
-                    continue; // genuinely another mod's own territory - leave it alone, as before
-                }
+                // else userOverridden: skip the grass-borrow special case entirely and fall through
+                // to full normal generation below (own texture AND own grass detection, not a
+                // borrowed grass list) - a full override, not just the narrow grass-only bypass.
             }
 
             const auto seasonResult = buildSeasonalSlots(pgd, ltexBaseSlots, season, terrainHelperPresent, pbrConfigIndex);
             if (!seasonResult.has_value()) {
+                Logger::debug(L"[{}] season={}: no seasonal sibling found for diffuse={}", entry.editorID,
+                    StringUtil::utf8toUTF16(string(season)), ltexBaseSlots.at(DIFFUSE_SLOT));
                 continue;
             }
 
@@ -1473,14 +1691,66 @@ auto SeasonPatcher::run(PGDirectory* pgd, const std::vector<std::wstring>& meshB
         }
     }
 
+    // Order each section's relayed foreign lines by the user's chosen cross-mod priority before
+    // handing them to writeIniFiles() - two foreign mods rarely touch the very same base record,
+    // but when they do, Seasons of Skyrim's "last value for a key wins" rule means whichever mod's
+    // line ends up LAST in the merged file wins, and without an explicit order that's just
+    // whatever the Data/Seasons directory scan happened to visit first (effectively alphabetical
+    // by ini filename, not anyone's actual intent).
+    for (auto& [sectionKey, lines] : foreignCoverage.rawLinesBySection) {
+        // sectionKey is "SEASON|RecordType" - only the record-type half selects a priority list.
+        const auto pipePos = sectionKey.find('|');
+        const auto recordType = pipePos != string::npos ? sectionKey.substr(pipePos + 1) : sectionKey;
+
+        // Drop raw lines from any mod overridden for this record type - "override" means
+        // AutoSeasons treats that mod's own declarations as if they don't exist at all, not just
+        // "step aside only if AutoSeasons happens to have its own replacement art". Without this,
+        // a record AutoSeasons has no seasonal art for would silently keep the overridden mod's
+        // own swap, since its raw line was still relayed into the merged ini regardless of the
+        // override setting - independent of (and unaffected by) the priority sort below.
+        if (const auto overrideIt = overrideSetByType.find(recordType);
+            overrideIt != overrideSetByType.end() && !overrideIt->second.empty()) {
+            const auto& typeOverrides = overrideIt->second;
+            std::erase_if(
+                lines, [&](const ForeignRawLine& l) { return typeOverrides.contains(boost::algorithm::to_lower_copy(l.modName)); });
+        }
+
+        const auto& priorityList = [&]() -> const vector<wstring>& {
+            if (const auto it = foreignSeasonModPriorityByType.find(recordType);
+                it != foreignSeasonModPriorityByType.end() && !it->second.empty()) {
+                return it->second;
+            }
+            return foreignSeasonModPriority;
+        }();
+
+        if (priorityList.empty()) {
+            continue; // no explicit preference configured for this record type - keep scan order
+        }
+
+        unordered_map<wstring, size_t> rankByMod;
+        for (size_t i = 0; i < priorityList.size(); i++) {
+            rankByMod[boost::algorithm::to_lower_copy(priorityList[i])] = i;
+        }
+
+        // A mod absent from the priority list keeps rank -1 (lowest), so explicitly-ranked mods
+        // always win over unranked ones; stable_sort preserves original relative order among
+        // several unranked (or same-rank) lines.
+        ranges::stable_sort(lines, {}, [&](const ForeignRawLine& l) -> long long {
+            const auto it = rankByMod.find(boost::algorithm::to_lower_copy(l.modName));
+            return it != rankByMod.end() ? static_cast<long long>(it->second) : -1;
+        });
+    }
+
     outForeignRawLinesBySection = std::move(foreignCoverage.rawLinesBySection);
     outForeignIniFilenames = std::move(foreignCoverage.foreignIniFilenames);
+
+    outUnresolvedForeignConflictCount = unresolvedForeignConflictCount;
 
     return allSwaps;
 }
 
 void SeasonPatcher::writeIniFiles(const std::filesystem::path& outputDir, const std::vector<SwapEntry>& swaps,
-    const std::unordered_map<std::string, std::vector<std::wstring>>& foreignRawLinesBySection)
+    const std::unordered_map<std::string, std::vector<ForeignRawLine>>& foreignRawLinesBySection)
 {
     if (swaps.empty() && foreignRawLinesBySection.empty()) {
         return;
@@ -1565,29 +1835,24 @@ void SeasonPatcher::writeIniFiles(const std::filesystem::path& outputDir, const 
             };
             const auto writeForeign = [&]() {
                 if (foreignLinesIt != foreignRawLinesBySection.end()) {
-                    for (const auto& line : foreignLinesIt->second) {
-                        out << line << L"\n";
+                    for (const auto& rawLine : foreignLinesIt->second) {
+                        out << rawLine.line << L"\n";
                     }
                 }
             };
 
-            // LTEX only: written in the opposite order (foreign lines first, ours last) because
-            // SeasonPatcher::run() can now generate our own texture-only duplicate for a base LTEX
-            // a foreign mod ALSO declares (its own grass-only patch, reusing the base texture
-            // unchanged - see the borrowedGrassSource logic in run()'s LTEX loop). When that
-            // happens, both a foreign line and our own line target the same base record in this
-            // same file, and Seasons of Skyrim's ini parser keeps the LAST value for a given key -
-            // ours needs to be that last value so our seasonal texture wins while still carrying
-            // that mod's own curated Grasses list. Every other record type never has this overlap
-            // (a covered record with no retarget is skipped entirely, so only one side ever writes
-            // a line for a given base), so their relative order still doesn't matter.
-            if (recordType == "LTEX") {
-                writeForeign();
-                writeOurs();
-            } else {
-                writeOurs();
-                writeForeign();
-            }
+            // Foreign lines always written first, ours last: Seasons of Skyrim's ini parser keeps
+            // the LAST value for a given key, and two cases now legitimately produce both a
+            // foreign line AND our own line for the SAME base record in this SAME file - LTEX's
+            // grass-borrowing bypass (a foreign mod's own grass-only patch, reusing the base
+            // texture unchanged - see borrowedGrassSource in run()'s LTEX loop), and ANY record
+            // type when the user has asked AutoSeasons to override that foreign mod's coverage
+            // entirely (see overrideForeignSeasonMods/getCoveringMod() in run()) - in both cases
+            // ours needs to be the last-written value so it actually wins in the merged ini,
+            // not just internally. Harmless when only one side ever writes a line for a given
+            // base (the common case), since order doesn't matter then.
+            writeForeign();
+            writeOurs();
         }
     }
 }

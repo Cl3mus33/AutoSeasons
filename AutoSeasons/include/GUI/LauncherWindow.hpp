@@ -7,6 +7,7 @@
 #include <wx/wx.h>
 
 #include <filesystem>
+#include <unordered_map>
 #include <vector>
 
 /**
@@ -36,12 +37,18 @@ private:
     wxChoice* m_gameTypeChoice;
     PGModifiableListCtrl* m_blocklistCtrl;
     PGModifiableListCtrl* m_editorIDKeywordsCtrl;
+    wxCheckBox* m_dryRunCheckbox;
     wxButton* m_okButton;
+    std::vector<std::wstring> m_overrideForeignSeasonMods;
+    std::unordered_map<std::string, std::vector<std::wstring>> m_overrideForeignSeasonModsByType;
+    std::vector<std::wstring> m_foreignSeasonModPriority;
+    std::unordered_map<std::string, std::vector<std::wstring>> m_foreignSeasonModPriorityByType;
 
     void onLanguageChanged(wxCommandEvent& event);
     void onThemeChanged(wxCommandEvent& event);
     void onBrowseGameLocation(wxCommandEvent& event);
     void onBrowseOutputLocation(wxCommandEvent& event);
+    void onManageSeasonModOverrides(wxCommandEvent& event);
     void onOkButtonPressed(wxCommandEvent& event);
     void updateListColumnWidths();
 };
