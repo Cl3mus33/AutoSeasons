@@ -27,3 +27,7 @@ CMakeUserPresets.json
 # OS cruft
 Thumbs.db
 .DS_Store
+
+# Nexus page drafts - marketing copy, not something to keep in source control
+wiki-preview/Nexus-Page-Draft.md
+wiki-preview/AutoBlend-Nexus-Page-Draft.md
