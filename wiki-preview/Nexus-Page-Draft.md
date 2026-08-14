@@ -53,6 +53,27 @@ AutoSeasons scans your Skyrim SE load order for seasonal texture and mesh varian
 reads at runtime to swap them in-game - no manual xEdit/CK work required. Point it at your load
 order, click Start, and it does the rest.
 
+Beyond the base scan-and-generate, AutoSeasons also actively manages how it interacts with other
+seasonal-content mods already in your load order (Turn of the Seasons, Nature of the Wild Lands,
+etc.), instead of just adding its own `Data/Seasons` file alongside theirs and hoping for the best:
+
+- It **detects every other mod's own seasonal declarations** and merges them with its own into one
+  authoritative ini per season, rather than leaving Seasons of Skyrim's own file-priority system to
+  sort out several separate, potentially conflicting files.
+- By default it **respects another mod's coverage** - if a mod already declares a seasonal swap for
+  a record, AutoSeasons won't generate a redundant duplicate on top of it.
+- A built-in **"Manage Season Mod Conflicts" dialog** lets you override that default per mod - either
+  globally or for a specific record type only (e.g. respect a mod's landscape textures but override
+  its trees) - so AutoSeasons' own generated textures win instead when that's what you want.
+- When two or more foreign mods both declare a swap for the very same record, you can set an
+  **explicit priority order** between them (the same idea as mod order in MO2/Vortex) to resolve it
+  deterministically - and AutoSeasons will warn you in the log/completion summary if such a
+  conflict is ever left unresolved, instead of silently picking whichever file a directory scan
+  happened to visit last.
+
+In short: AutoSeasons isn't just a generator, it's also a conflict resolver for your load order's
+seasonal content as a whole.
+
 ### Companion mod: AutoBlend
 
 Released alongside AutoSeasons, from the same author: **[AutoBlend](#)** *(add the Nexus link once
