@@ -49,6 +49,9 @@ private:
     void onBrowseGameLocation(wxCommandEvent& event);
     void onBrowseOutputLocation(wxCommandEvent& event);
     void onManageSeasonModOverrides(wxCommandEvent& event);
+    void onLoadConfig(wxCommandEvent& event);
+    void onSaveConfigAs(wxCommandEvent& event);
     void onOkButtonPressed(wxCommandEvent& event);
     void updateListColumnWidths();
+    void applyLoadedParams(const ASParams& params);
 };

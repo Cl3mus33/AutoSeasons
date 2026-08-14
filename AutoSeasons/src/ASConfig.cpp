@@ -47,12 +47,16 @@ auto ASConfig::getConfigPath(const filesystem::path& exeDir) -> filesystem::path
     return exeDir / "AutoSeasons_config.json";
 }
 
-auto ASConfig::load(const filesystem::path& exeDir) -> ASParams
+auto ASConfig::load(const filesystem::path& exeDir) -> ASParams { return loadFrom(getConfigPath(exeDir)); }
+
+void ASConfig::save(const filesystem::path& exeDir, const ASParams& params) { saveTo(getConfigPath(exeDir), params); }
+
+auto ASConfig::loadFrom(const filesystem::path& configFilePath) -> ASParams
 {
     ASParams params;
 
     nlohmann::json configJ;
-    if (!FileUtil::getJSON(getConfigPath(exeDir), configJ)) {
+    if (!FileUtil::getJSON(configFilePath, configJ)) {
         return params;
     }
 
@@ -130,7 +134,7 @@ auto ASConfig::load(const filesystem::path& exeDir) -> ASParams
     return params;
 }
 
-void ASConfig::save(const filesystem::path& exeDir, const ASParams& params)
+void ASConfig::saveTo(const filesystem::path& configFilePath, const ASParams& params)
 {
     nlohmann::json configJ;
 
@@ -174,7 +178,7 @@ void ASConfig::save(const filesystem::path& exeDir, const ASParams& params)
         configJ["foreignSeasonModPriorityByType"][typeKey] = arr;
     }
 
-    ofstream file(getConfigPath(exeDir));
+    ofstream file(configFilePath);
     if (!file.is_open()) {
         Logger::warn("Failed to save config file");
         return;

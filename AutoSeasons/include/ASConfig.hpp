@@ -43,10 +43,11 @@ struct ASParams {
     // Season Mod Conflicts" dialog.
     std::vector<std::wstring> overrideForeignSeasonMods;
     // Per-record-type override of overrideForeignSeasonMods (key: "STAT"/"LTEX"/"ACTI"/"FURN"/
-    // "MSTT"/"TREE"/"FLOR") - additional mods to override for that record type specifically,
-    // without overriding them everywhere. Combined (union) with overrideForeignSeasonMods above,
-    // not a replacement for it - e.g. a mod can be left respected for STAT while being overridden
-    // for TREE. Populated via the Launcher's "Manage Season Mod Conflicts" dialog.
+    // "MSTT"/"TREE"/"FLOR") - when a type has an entry here (even an empty one), it REPLACES
+    // overrideForeignSeasonMods for that type rather than adding to it - e.g. a mod can be left
+    // respected for STAT while being overridden for TREE, or overridden globally but explicitly
+    // un-overridden for one type via an empty list. A type with no entry here falls back to the
+    // global list. Populated via the Launcher's "Manage Season Mod Conflicts" dialog.
     std::unordered_map<std::string, std::vector<std::wstring>> overrideForeignSeasonModsByType;
     // Cross-mod priority order for foreign Data/Seasons content: when two or more (non-overridden)
     // foreign mods both declare a swap for the very same base record, the mod later in this list
@@ -87,6 +88,11 @@ class ASConfig {
 public:
     static auto load(const std::filesystem::path& exeDir) -> ASParams;
     static void save(const std::filesystem::path& exeDir, const ASParams& params);
+
+    /** Load params from an arbitrary JSON file, e.g. a user-picked profile via "Load Config...". */
+    static auto loadFrom(const std::filesystem::path& configFilePath) -> ASParams;
+    /** Save params to an arbitrary JSON file, e.g. via "Save Config As...". */
+    static void saveTo(const std::filesystem::path& configFilePath, const ASParams& params);
 
 private:
     static auto getConfigPath(const std::filesystem::path& exeDir) -> std::filesystem::path;

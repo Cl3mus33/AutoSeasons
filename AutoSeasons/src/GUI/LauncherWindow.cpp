@@ -79,6 +79,24 @@ LauncherWindow::LauncherWindow(const ASParams& initParams, filesystem::path exeP
     introText->Wrap(490);
     generalSizer->Add(introText, 0, wxALL, BORDER_SIZE * 2);
 
+    // Config profile - a single install (e.g. shared outside any one modlist) can still keep
+    // distinct settings per use case by saving/loading separate JSON files here, instead of
+    // relying on AutoSeasons_config.json next to the exe (which only isolates settings when each
+    // modlist gets its own copy of the exe). Mirrors PGPatcher's own Load/Save Config pattern.
+    auto* configProfileLabel = makeSectionLabel(generalPanel, ASTr("launcher.configProfile.label", "Config Profile"));
+    generalSizer->Add(configProfileLabel, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
+
+    auto* loadConfigButton = new wxButton(generalPanel, wxID_ANY, ASTr("launcher.configProfile.load", "Load Config..."));
+    loadConfigButton->Bind(wxEVT_BUTTON, &LauncherWindow::onLoadConfig, this);
+    auto* saveConfigButton
+        = new wxButton(generalPanel, wxID_ANY, ASTr("launcher.configProfile.saveAs", "Save Config As..."));
+    saveConfigButton->Bind(wxEVT_BUTTON, &LauncherWindow::onSaveConfigAs, this);
+
+    auto* configProfileSizer = new wxBoxSizer(wxHORIZONTAL);
+    configProfileSizer->Add(loadConfigButton, 0, wxALL, BORDER_SIZE);
+    configProfileSizer->Add(saveConfigButton, 0, wxALL, BORDER_SIZE);
+    generalSizer->Add(configProfileSizer, 0);
+
     // Game location
     auto* gameLocationLabel = makeSectionLabel(generalPanel, ASTr("launcher.gameLocation.label", "Game Location"));
     generalSizer->Add(gameLocationLabel, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
@@ -400,6 +418,67 @@ void LauncherWindow::onManageSeasonModOverrides([[maybe_unused]] wxCommandEvent&
         m_foreignSeasonModPriority = dialog.getPriorityOrder();
         m_foreignSeasonModPriorityByType = dialog.getPriorityByType();
     }
+}
+
+void LauncherWindow::onLoadConfig([[maybe_unused]] wxCommandEvent& event)
+{
+    wxFileDialog dialog(this, ASTr("launcher.configProfile.loadDialogTitle", "Load Config"), wxEmptyString, wxEmptyString,
+        ASTr("launcher.configProfile.fileFilter", "JSON files (*.json)|*.json|All files (*.*)|*.*"),
+        wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (dialog.ShowModal() != wxID_OK) {
+        return;
+    }
+
+    applyLoadedParams(ASConfig::loadFrom(filesystem::path(dialog.GetPath().ToStdWstring())));
+}
+
+void LauncherWindow::onSaveConfigAs([[maybe_unused]] wxCommandEvent& event)
+{
+    wxFileDialog dialog(this, ASTr("launcher.configProfile.saveDialogTitle", "Save Config As"), wxEmptyString,
+        "AutoSeasons_config.json", ASTr("launcher.configProfile.fileFilter", "JSON files (*.json)|*.json|All files (*.*)|*.*"),
+        wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+    if (dialog.ShowModal() != wxID_OK) {
+        return;
+    }
+
+    ASParams current;
+    getParams(current);
+    ASConfig::saveTo(filesystem::path(dialog.GetPath().ToStdWstring()), current);
+}
+
+void LauncherWindow::applyLoadedParams(const ASParams& params)
+{
+    m_gameLocationTextbox->SetValue(params.gameDir.wstring());
+    m_outputLocationTextbox->SetValue(params.outputDir.wstring());
+
+    const auto& gameTypes = BethesdaGame::getGameTypes();
+    for (size_t i = 0; i < gameTypes.size(); i++) {
+        if (gameTypes[i] == params.gameType) {
+            m_gameTypeChoice->SetSelection(static_cast<int>(i));
+            break;
+        }
+    }
+
+    m_blocklistCtrl->DeleteAllItems();
+    long blocklistIndex = 0;
+    for (const auto& rule : params.meshBlockList) {
+        m_blocklistCtrl->InsertItem(blocklistIndex++, wxString(rule));
+    }
+    m_blocklistCtrl->InsertItem(m_blocklistCtrl->GetItemCount(), "");
+
+    m_editorIDKeywordsCtrl->DeleteAllItems();
+    long editorIDKeywordIndex = 0;
+    for (const auto& keyword : params.seasonLockedEditorIDKeywords) {
+        m_editorIDKeywordsCtrl->InsertItem(editorIDKeywordIndex++, wxString(keyword));
+    }
+    m_editorIDKeywordsCtrl->InsertItem(m_editorIDKeywordsCtrl->GetItemCount(), "");
+
+    m_overrideForeignSeasonMods = params.overrideForeignSeasonMods;
+    m_overrideForeignSeasonModsByType = params.overrideForeignSeasonModsByType;
+    m_foreignSeasonModPriority = params.foreignSeasonModPriority;
+    m_foreignSeasonModPriorityByType = params.foreignSeasonModPriorityByType;
+
+    updateListColumnWidths();
 }
 
 void LauncherWindow::updateListColumnWidths()
