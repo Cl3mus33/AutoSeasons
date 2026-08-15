@@ -22,6 +22,8 @@ page verbatim (file name → page title).
   their own `Data/Seasons` declarations (Turn of the Seasons, Nature of the Wild Lands, etc.).
 - **[Troubleshooting](Troubleshooting.md)** — "why didn't X get a seasonal variant," "it says 0
   records were created," conflicting mods, and how to read the log.
+- **[FAQ](FAQ.md)** — quick answers: VR/Enderal support, running through your mod manager, and
+  other common questions.
 
 ## The short version
 
