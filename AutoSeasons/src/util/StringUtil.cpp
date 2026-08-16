@@ -144,7 +144,11 @@ auto utf16toUTF8(const wstring& wStr) -> string
 
 auto containsOnlyAscii(const std::string& str) -> bool
 {
-    return std::ranges::all_of(str, [](char wc) { return wc <= ASCII_UPPER_BOUND; });
+    // char is signed on MSVC, so any byte >= 0x80 (the whole non-ASCII range this function
+    // exists to catch) wraps negative and would satisfy "wc <= 127" even though it isn't
+    // ASCII - unsigned char comparison is required for this check to mean what it says.
+    return std::ranges::all_of(
+        str, [](char wc) { return static_cast<unsigned char>(wc) <= ASCII_UPPER_BOUND; });
 }
 
 auto containsOnlyAscii(const std::wstring& str) -> bool
