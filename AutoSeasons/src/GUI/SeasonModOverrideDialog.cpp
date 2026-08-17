@@ -6,25 +6,12 @@
 #include <wx/statline.h>
 
 #include <algorithm>
-#include <array>
 #include <utility>
 
 using namespace std;
 
 namespace {
 constexpr int BORDER_SIZE = 5;
-
-// (display label, SeasonPatcher record-type key) - order matches the wxChoice's own item order,
-// so m_typeChoice's selection index can be used directly to look this up.
-constexpr array<pair<const char*, const char*>, 7> RECORD_TYPES { {
-    { "Statics (STAT)", "STAT" },
-    { "Landscape Textures (LTEX)", "LTEX" },
-    { "Activators (ACTI)", "ACTI" },
-    { "Furniture (FURN)", "FURN" },
-    { "Moveable Statics (MSTT)", "MSTT" },
-    { "Trees (TREE)", "TREE" },
-    { "Flora (FLOR)", "FLOR" },
-} };
 }
 
 SeasonModOverrideDialog::SeasonModOverrideDialog(wxWindow* parent, filesystem::path gameDir,
@@ -33,13 +20,13 @@ SeasonModOverrideDialog::SeasonModOverrideDialog(wxWindow* parent, filesystem::p
     const std::vector<std::wstring>& currentPriority,
     const std::unordered_map<std::string, std::vector<std::wstring>>& currentPriorityByType)
     : wxDialog(parent, wxID_ANY, ASTr("seasonModOverrides.title", "Season Mod Conflicts"), wxDefaultPosition,
-          wxSize(480, 760), wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
+          wxSize(480, 420), wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER)
     , m_gameDir(std::move(gameDir))
     , m_gameType(gameType)
     , m_initialOverrides(currentOverrides)
     , m_initialPriority(currentPriority)
-    , m_priorityByType(currentPriorityByType)
-    , m_overridesByType(currentOverridesByType)
+    , m_initialOverridesByType(currentOverridesByType)
+    , m_initialPriorityByType(currentPriorityByType)
     , m_priorityOrderChanged(!currentPriority.empty())
 {
     auto* mainSizer = new wxBoxSizer(wxVERTICAL);
@@ -63,8 +50,8 @@ SeasonModOverrideDialog::SeasonModOverrideDialog(wxWindow* parent, filesystem::p
     // Quick-reference legend, distinct from the fuller explanation above - this list's checkbox and
     // its position each mean something different (unlike a typical MO2/Vortex load-order checklist,
     // where checking usually just means "enabled"), and that's easy to misread at a glance.
-    auto* modListLegend = new wxStaticText(
-        this, wxID_ANY, ASTr("seasonModOverrides.legend",
+    auto* modListLegend = new wxStaticText(this, wxID_ANY,
+        ASTr("seasonModOverrides.legend",
             "Checked = keep this mod's own coverage   |   Unchecked = overwrite it with AutoSeasons' own texture   |   "
             "Position = priority order (bottom wins)"));
     wxFont legendFont = modListLegend->GetFont();
@@ -85,62 +72,10 @@ SeasonModOverrideDialog::SeasonModOverrideDialog(wxWindow* parent, filesystem::p
     moveButtonSizer->Add(m_moveDownButton, 0, wxLEFT, BORDER_SIZE);
     modListSizer->Add(moveButtonSizer, 0, wxALIGN_TOP);
 
-    mainSizer->Add(modListSizer, 2, wxEXPAND | wxLEFT | wxRIGHT, BORDER_SIZE * 2);
+    mainSizer->Add(modListSizer, 1, wxEXPAND | wxLEFT | wxRIGHT, BORDER_SIZE * 2);
 
     m_statusText = new wxStaticText(this, wxID_ANY, wxEmptyString);
     mainSizer->Add(m_statusText, 0, wxALL, BORDER_SIZE * 2);
-
-    mainSizer->Add(new wxStaticLine(this, wxID_ANY), 0, wxEXPAND | wxALL, BORDER_SIZE);
-
-    auto* typeIntroText = new wxStaticText(this, wxID_ANY,
-        ASTr("seasonModOverrides.typeIntro",
-            "Optional: use different overwrite/priority choices for one specific record type (e.g. "
-            "overwrite a mod, or prefer a different one, just for trees without touching every other "
-            "type)."));
-    typeIntroText->Wrap(440);
-    mainSizer->Add(typeIntroText, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE * 2);
-
-    auto* typeChoiceSizer = new wxBoxSizer(wxHORIZONTAL);
-    wxArrayString typeChoices;
-    for (const auto& [label, key] : RECORD_TYPES) {
-        typeChoices.Add(label);
-    }
-    m_typeChoice = new wxChoice(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, typeChoices);
-    m_typeChoice->SetSelection(0);
-    m_typeChoice->Bind(wxEVT_CHOICE, &SeasonModOverrideDialog::onTypeChoiceChanged, this);
-    typeChoiceSizer->Add(m_typeChoice, 0, wxALL, BORDER_SIZE);
-
-    m_customizeTypeCheckbox = new wxCheckBox(
-        this, wxID_ANY, ASTr("seasonModOverrides.customizeType", "Customize overwrites/order for this type"));
-    m_customizeTypeCheckbox->Bind(wxEVT_CHECKBOX, &SeasonModOverrideDialog::onCustomizeTypeToggled, this);
-    typeChoiceSizer->Add(m_customizeTypeCheckbox, 0, wxALL | wxALIGN_CENTER_VERTICAL, BORDER_SIZE);
-
-    mainSizer->Add(typeChoiceSizer, 0, wxLEFT | wxRIGHT, BORDER_SIZE);
-
-    auto* typeListLegend = new wxStaticText(
-        this, wxID_ANY, ASTr("seasonModOverrides.legend",
-            "Checked = keep this mod's own coverage   |   Unchecked = overwrite it with AutoSeasons' own texture   |   "
-            "Position = priority order (bottom wins)"));
-    wxFont typeListLegendFont = typeListLegend->GetFont();
-    typeListLegendFont.SetStyle(wxFONTSTYLE_ITALIC);
-    typeListLegend->SetFont(typeListLegendFont);
-    mainSizer->Add(typeListLegend, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE * 2);
-
-    auto* typeListSizer = new wxBoxSizer(wxHORIZONTAL);
-    m_typeOrderList = new wxCheckListBox(this, wxID_ANY);
-    m_typeOrderList->Bind(wxEVT_CHECKLISTBOX, &SeasonModOverrideDialog::onTypeListToggled, this);
-    typeListSizer->Add(m_typeOrderList, 1, wxEXPAND);
-
-    auto* typeMoveButtonSizer = new wxBoxSizer(wxVERTICAL);
-    m_typeMoveUpButton = new wxButton(this, wxID_ANY, ASTr("seasonModOverrides.moveUp", "Move Up"));
-    m_typeMoveUpButton->Bind(wxEVT_BUTTON, &SeasonModOverrideDialog::onTypeMoveUpPressed, this);
-    m_typeMoveDownButton = new wxButton(this, wxID_ANY, ASTr("seasonModOverrides.moveDown", "Move Down"));
-    m_typeMoveDownButton->Bind(wxEVT_BUTTON, &SeasonModOverrideDialog::onTypeMoveDownPressed, this);
-    typeMoveButtonSizer->Add(m_typeMoveUpButton, 0, wxBOTTOM | wxLEFT, BORDER_SIZE);
-    typeMoveButtonSizer->Add(m_typeMoveDownButton, 0, wxLEFT, BORDER_SIZE);
-    typeListSizer->Add(typeMoveButtonSizer, 0, wxALIGN_TOP);
-
-    mainSizer->Add(typeListSizer, 1, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, BORDER_SIZE * 2);
 
     auto* buttonSizer = new wxBoxSizer(wxHORIZONTAL);
     auto* cancelButton = new wxButton(this, wxID_CANCEL, ASTr("common.cancel", "Cancel"));
@@ -154,8 +89,6 @@ SeasonModOverrideDialog::SeasonModOverrideDialog(wxWindow* parent, filesystem::p
 
     if (!m_gameDir.empty()) {
         runScan();
-    } else {
-        populateTypeOrderList();
     }
 }
 
@@ -170,14 +103,12 @@ void SeasonModOverrideDialog::runScan()
         mods = SeasonPatcher::discoverForeignSeasonMods(bg.getGameDataPath());
     } catch (const exception& e) {
         m_statusText->SetLabel(ASTr("seasonModOverrides.scanError", "Could not scan: ") + wxString(e.what()));
-        populateTypeOrderList();
         return;
     }
 
     if (mods.empty()) {
         m_statusText->SetLabel(
             ASTr("seasonModOverrides.noModsFound", "No foreign season mods detected under Data/Seasons."));
-        populateTypeOrderList();
         return;
     }
 
@@ -208,80 +139,6 @@ void SeasonModOverrideDialog::runScan()
             m_modList->Check(static_cast<unsigned int>(index), true);
         }
     }
-
-    populateTypeOrderList();
-}
-
-auto SeasonModOverrideDialog::getCurrentTypeKey() const -> std::string
-{
-    const int sel = m_typeChoice->GetSelection();
-    if (sel == wxNOT_FOUND || sel < 0 || static_cast<size_t>(sel) >= RECORD_TYPES.size()) {
-        return RECORD_TYPES.front().second;
-    }
-    return RECORD_TYPES.at(static_cast<size_t>(sel)).second;
-}
-
-void SeasonModOverrideDialog::populateTypeOrderList()
-{
-    const auto typeKey = getCurrentTypeKey();
-    m_typeOrderList->Clear();
-
-    const auto orderIt = m_priorityByType.find(typeKey);
-    const bool customized = orderIt != m_priorityByType.end();
-    m_customizeTypeCheckbox->SetValue(customized);
-
-    const auto& overridesForType = m_overridesByType[typeKey]; // empty vector if not customized yet - fine, just no checks below
-
-    if (customized) {
-        for (const auto& name : orderIt->second) {
-            const auto index = m_typeOrderList->Append(wxString(name));
-            const auto nameLower = boost::algorithm::to_lower_copy(name);
-            const bool overwritten = std::ranges::any_of(overridesForType, [&](const auto& overriddenName) {
-                return boost::algorithm::to_lower_copy(overriddenName) == nameLower;
-            });
-            // Checked = respected (kept), unchecked = overwritten - same inversion as m_modList.
-            if (!overwritten) {
-                m_typeOrderList->Check(static_cast<unsigned int>(index), true);
-            }
-        }
-    } else {
-        // Not customized - preview the current global list (order AND checked state) as the
-        // starting point a user would get if they turned customization on right now.
-        for (size_t i = 0; i < m_modNames.size(); i++) {
-            const auto index = m_typeOrderList->Append(wxString(m_modNames.at(i)));
-            if (m_modList->IsChecked(static_cast<unsigned int>(i))) {
-                m_typeOrderList->Check(static_cast<unsigned int>(index), true);
-            }
-        }
-    }
-
-    updateTypeControlsEnabled();
-}
-
-void SeasonModOverrideDialog::updateTypeControlsEnabled()
-{
-    const bool enabled = m_customizeTypeCheckbox->GetValue();
-    m_typeOrderList->Enable(enabled);
-    m_typeMoveUpButton->Enable(enabled);
-    m_typeMoveDownButton->Enable(enabled);
-}
-
-void SeasonModOverrideDialog::saveTypeListState()
-{
-    const auto typeKey = getCurrentTypeKey();
-
-    vector<wstring> order;
-    vector<wstring> overridden;
-    for (unsigned int i = 0; i < m_typeOrderList->GetCount(); i++) {
-        const auto name = m_typeOrderList->GetString(i).ToStdWstring();
-        order.push_back(name);
-        // Unchecked = overwritten (checked = respected/kept) - see m_modList's own inversion.
-        if (!m_typeOrderList->IsChecked(i)) {
-            overridden.push_back(name);
-        }
-    }
-    m_priorityByType[typeKey] = std::move(order);
-    m_overridesByType[typeKey] = std::move(overridden);
 }
 
 void SeasonModOverrideDialog::onScanButtonPressed([[maybe_unused]] wxCommandEvent& event)
@@ -323,70 +180,6 @@ void SeasonModOverrideDialog::onMoveDownPressed([[maybe_unused]] wxCommandEvent&
     m_priorityOrderChanged = true;
 }
 
-void SeasonModOverrideDialog::onTypeChoiceChanged([[maybe_unused]] wxCommandEvent& event)
-{
-    populateTypeOrderList();
-}
-
-void SeasonModOverrideDialog::onCustomizeTypeToggled([[maybe_unused]] wxCommandEvent& event)
-{
-    const auto typeKey = getCurrentTypeKey();
-    if (m_customizeTypeCheckbox->GetValue()) {
-        // Just turned on - commit whatever the list is currently previewing (a snapshot of the
-        // global order/overrides) as this type's own, now-independent customization.
-        saveTypeListState();
-        updateTypeControlsEnabled();
-    } else {
-        m_priorityByType.erase(typeKey);
-        m_overridesByType.erase(typeKey);
-        populateTypeOrderList(); // refresh back to previewing the (current) global list
-    }
-}
-
-void SeasonModOverrideDialog::onTypeListToggled([[maybe_unused]] wxCommandEvent& event)
-{
-    // A checkbox was clicked while previewing the (not-yet-customized) global list - clicking it
-    // is itself the signal that the user wants a per-type override, so turn customization on
-    // rather than silently discarding the click when populateTypeOrderList() next runs.
-    if (!m_customizeTypeCheckbox->GetValue()) {
-        m_customizeTypeCheckbox->SetValue(true);
-        updateTypeControlsEnabled();
-    }
-    saveTypeListState();
-}
-
-void SeasonModOverrideDialog::onTypeMoveUpPressed([[maybe_unused]] wxCommandEvent& event)
-{
-    const int sel = m_typeOrderList->GetSelection();
-    if (sel == wxNOT_FOUND || sel == 0) {
-        return;
-    }
-    const auto idx = static_cast<unsigned int>(sel);
-    const wxString text = m_typeOrderList->GetString(idx);
-    const bool checked = m_typeOrderList->IsChecked(idx);
-    m_typeOrderList->Delete(idx);
-    m_typeOrderList->Insert(text, idx - 1);
-    m_typeOrderList->Check(idx - 1, checked);
-    m_typeOrderList->SetSelection(static_cast<int>(idx - 1));
-    saveTypeListState();
-}
-
-void SeasonModOverrideDialog::onTypeMoveDownPressed([[maybe_unused]] wxCommandEvent& event)
-{
-    const int sel = m_typeOrderList->GetSelection();
-    if (sel == wxNOT_FOUND || static_cast<unsigned int>(sel) + 1 >= m_typeOrderList->GetCount()) {
-        return;
-    }
-    const auto idx = static_cast<unsigned int>(sel);
-    const wxString text = m_typeOrderList->GetString(idx);
-    const bool checked = m_typeOrderList->IsChecked(idx);
-    m_typeOrderList->Delete(idx);
-    m_typeOrderList->Insert(text, idx + 1);
-    m_typeOrderList->Check(idx + 1, checked);
-    m_typeOrderList->SetSelection(static_cast<int>(idx + 1));
-    saveTypeListState();
-}
-
 auto SeasonModOverrideDialog::getSelectedOverrides() const -> std::vector<std::wstring>
 {
     // Unchecked = overwritten (checked = respected/kept) - see m_modList's own inversion.
@@ -402,18 +195,18 @@ auto SeasonModOverrideDialog::getSelectedOverrides() const -> std::vector<std::w
 auto SeasonModOverrideDialog::getPriorityOrder() const -> std::vector<std::wstring>
 {
     // Only commit an order the user actually chose - opening this dialog, scanning, and clicking OK
-    // without ever touching Move Up/Down would otherwise silently persist whatever arbitrary order
-    // the scan happened to produce, permanently ranking every currently-installed mod against any
-    // mod installed later. See m_priorityOrderChanged's own doc comment.
+    // without ever touching the order would otherwise silently persist whatever arbitrary order the
+    // scan happened to produce, permanently ranking every currently-installed mod against any mod
+    // installed later. See m_priorityOrderChanged's own doc comment.
     return m_priorityOrderChanged ? m_modNames : std::vector<std::wstring> {};
 }
 
 auto SeasonModOverrideDialog::getOverridesByType() const -> std::unordered_map<std::string, std::vector<std::wstring>>
 {
-    return m_overridesByType;
+    return m_initialOverridesByType;
 }
 
 auto SeasonModOverrideDialog::getPriorityByType() const -> std::unordered_map<std::string, std::vector<std::wstring>>
 {
-    return m_priorityByType;
+    return m_initialPriorityByType;
 }
