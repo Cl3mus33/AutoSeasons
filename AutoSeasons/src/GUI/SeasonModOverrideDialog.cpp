@@ -36,12 +36,23 @@ SeasonModOverrideDialog::SeasonModOverrideDialog(wxWindow* parent, filesystem::p
             "AutoSeasons normally defers to another mod's own Data/Seasons ini whenever it already "
             "covers a record for a season - every mod below starts checked (respected). Uncheck a "
             "mod to have AutoSeasons overwrite it instead: it generates its own seasonal texture "
-            "wherever it has the art, and that mod's own declaration is dropped entirely (so a "
-            "record with no AutoSeasons art falls back to no swap, not the overwritten mod's swap). "
-            "When two respected mods both cover the same record, the one lower in the list wins "
-            "(like Mod Organizer's own load order)."));
+            "wherever it has the art, dropping that mod's own declaration entirely. When two "
+            "respected mods both cover the same record, the one lower in the list wins (like Mod "
+            "Organizer's own load order)."));
     introText->Wrap(440);
     mainSizer->Add(introText, 0, wxALL, BORDER_SIZE * 2);
+
+    // Called out separately (not just folded into the paragraph above) since it's the single
+    // easiest thing to get burned by here: unchecking a mod isn't guaranteed to swap in
+    // AutoSeasons' own art - if AutoSeasons has none for a given record, that record loses its
+    // seasonal swap entirely instead of keeping the unchecked mod's own.
+    auto* noArtWarning = new wxStaticText(this, wxID_ANY,
+        ASTr("seasonModOverrides.noArtWarning",
+            "Unchecking a mod removes its swap for a record AutoSeasons has no seasonal art of its "
+            "own for - it does NOT fall back to keeping that mod's swap."));
+    noArtWarning->SetForegroundColour(wxColour(180, 95, 0)); // amber - matches the launcher's own MO2/Vortex warning
+    noArtWarning->Wrap(440);
+    mainSizer->Add(noArtWarning, 0, wxLEFT | wxRIGHT | wxBOTTOM, BORDER_SIZE * 2);
 
     auto* scanButton = new wxButton(this, wxID_ANY, ASTr("seasonModOverrides.scanButton", "Scan"));
     scanButton->Bind(wxEVT_BUTTON, &SeasonModOverrideDialog::onScanButtonPressed, this);

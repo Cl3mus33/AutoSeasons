@@ -1559,10 +1559,20 @@ auto SeasonPatcher::run(PGDirectory* pgd, const std::vector<std::wstring>& meshB
 
                 if (effective.stillCovered) {
                     if (effective.target.has_value()) {
+                        // "Same diffuse" is checked on the vanilla-equivalent path (same
+                        // normalization ensureDefaultPBRLand()'s own PBR-detection uses a few lines
+                        // above), not a raw string compare - a genuinely grass-only foreign patch
+                        // whose target happens to be PBR-pathed (textures\pbr\landscape\dirt02.dds)
+                        // while ours isn't (or vice versa) still needs to be recognized as the same
+                        // texture, or the grass-only case is silently missed.
+                        const auto normalizeDiffuse = [](const wstring& diffuse) -> wstring {
+                            const auto diffusePath = filesystem::path(diffuse);
+                            return boost::algorithm::to_lower_copy(
+                                (isUnderPBRFolder(diffusePath) ? toVanillaFolderPath(diffusePath) : diffusePath).wstring());
+                        };
                         if (const auto found = resolveForeignLTEXTarget(*effective.target, ltexByFormKey, ltexByEditorID);
                             found.has_value()
-                            && boost::algorithm::to_lower_copy(found->slots.at(DIFFUSE_SLOT))
-                                == boost::algorithm::to_lower_copy(entry.slots.at(DIFFUSE_SLOT))) {
+                            && normalizeDiffuse(found->slots.at(DIFFUSE_SLOT)) == normalizeDiffuse(entry.slots.at(DIFFUSE_SLOT))) {
                             borrowedGrassSource = found;
                         }
                     }
