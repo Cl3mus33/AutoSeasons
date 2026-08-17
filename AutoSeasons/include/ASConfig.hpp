@@ -62,9 +62,8 @@ struct ASParams {
     std::unordered_map<std::string, std::vector<std::wstring>> foreignSeasonModPriorityByType;
     // If true (default), any grass slot on a winter LTEX duplicate that has no detected winter
     // mesh variant of its own is dropped entirely (no grass drawn under snow) rather than
-    // inheriting its year-round appearance. No GUI toggle for this - edit this key directly in
-    // AutoSeasons_config.json (or pass --no-remove-grass-in-winter on the CLI) if you'd rather
-    // keep uncovered grass visible in winter.
+    // inheriting its year-round appearance. Toggled via the Launcher's General tab, or
+    // --no-remove-grass-in-winter on the CLI.
     bool removeGrassInWinter = true;
     // 0/1 = ESM-flag output plugin, 2 = do not ESM-flag. Defaults to 2 (never ESM-flag): an
     // ESM-flagged plugin historically could only have other ESM-flagged plugins as masters, which

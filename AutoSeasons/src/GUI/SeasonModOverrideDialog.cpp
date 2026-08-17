@@ -40,6 +40,7 @@ SeasonModOverrideDialog::SeasonModOverrideDialog(wxWindow* parent, filesystem::p
     , m_initialPriority(currentPriority)
     , m_priorityByType(currentPriorityByType)
     , m_overridesByType(currentOverridesByType)
+    , m_priorityOrderChanged(!currentPriority.empty())
 {
     auto* mainSizer = new wxBoxSizer(wxVERTICAL);
 
@@ -57,6 +58,16 @@ SeasonModOverrideDialog::SeasonModOverrideDialog(wxWindow* parent, filesystem::p
     auto* scanButton = new wxButton(this, wxID_ANY, ASTr("seasonModOverrides.scanButton", "Scan"));
     scanButton->Bind(wxEVT_BUTTON, &SeasonModOverrideDialog::onScanButtonPressed, this);
     mainSizer->Add(scanButton, 0, wxLEFT | wxRIGHT | wxBOTTOM, BORDER_SIZE * 2);
+
+    // Quick-reference legend, distinct from the fuller explanation above - this list's checkbox and
+    // its position each mean something different (unlike a typical MO2/Vortex load-order checklist,
+    // where checking usually just means "enabled"), and that's easy to misread at a glance.
+    auto* modListLegend = new wxStaticText(
+        this, wxID_ANY, ASTr("seasonModOverrides.legend", "Checked = override this mod entirely   |   Position = priority order (bottom wins)"));
+    wxFont legendFont = modListLegend->GetFont();
+    legendFont.SetStyle(wxFONTSTYLE_ITALIC);
+    modListLegend->SetFont(legendFont);
+    mainSizer->Add(modListLegend, 0, wxLEFT | wxRIGHT | wxBOTTOM, BORDER_SIZE * 2);
 
     auto* modListSizer = new wxBoxSizer(wxHORIZONTAL);
     m_modList = new wxCheckListBox(this, wxID_ANY);
@@ -102,6 +113,13 @@ SeasonModOverrideDialog::SeasonModOverrideDialog(wxWindow* parent, filesystem::p
     typeChoiceSizer->Add(m_customizeTypeCheckbox, 0, wxALL | wxALIGN_CENTER_VERTICAL, BORDER_SIZE);
 
     mainSizer->Add(typeChoiceSizer, 0, wxLEFT | wxRIGHT, BORDER_SIZE);
+
+    auto* typeListLegend = new wxStaticText(
+        this, wxID_ANY, ASTr("seasonModOverrides.legend", "Checked = override this mod entirely   |   Position = priority order (bottom wins)"));
+    wxFont typeListLegendFont = typeListLegend->GetFont();
+    typeListLegendFont.SetStyle(wxFONTSTYLE_ITALIC);
+    typeListLegend->SetFont(typeListLegendFont);
+    mainSizer->Add(typeListLegend, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE * 2);
 
     auto* typeListSizer = new wxBoxSizer(wxHORIZONTAL);
     m_typeOrderList = new wxCheckListBox(this, wxID_ANY);
@@ -276,6 +294,7 @@ void SeasonModOverrideDialog::onMoveUpPressed([[maybe_unused]] wxCommandEvent& e
     m_modList->Check(idx - 1, checked);
     m_modList->SetSelection(static_cast<int>(idx - 1));
     std::swap(m_modNames.at(idx), m_modNames.at(idx - 1));
+    m_priorityOrderChanged = true;
 }
 
 void SeasonModOverrideDialog::onMoveDownPressed([[maybe_unused]] wxCommandEvent& event)
@@ -292,6 +311,7 @@ void SeasonModOverrideDialog::onMoveDownPressed([[maybe_unused]] wxCommandEvent&
     m_modList->Check(idx + 1, checked);
     m_modList->SetSelection(static_cast<int>(idx + 1));
     std::swap(m_modNames.at(idx), m_modNames.at(idx + 1));
+    m_priorityOrderChanged = true;
 }
 
 void SeasonModOverrideDialog::onTypeChoiceChanged([[maybe_unused]] wxCommandEvent& event)
@@ -371,7 +391,11 @@ auto SeasonModOverrideDialog::getSelectedOverrides() const -> std::vector<std::w
 
 auto SeasonModOverrideDialog::getPriorityOrder() const -> std::vector<std::wstring>
 {
-    return m_modNames;
+    // Only commit an order the user actually chose - opening this dialog, scanning, and clicking OK
+    // without ever touching Move Up/Down would otherwise silently persist whatever arbitrary order
+    // the scan happened to produce, permanently ranking every currently-installed mod against any
+    // mod installed later. See m_priorityOrderChanged's own doc comment.
+    return m_priorityOrderChanged ? m_modNames : std::vector<std::wstring> {};
 }
 
 auto SeasonModOverrideDialog::getOverridesByType() const -> std::unordered_map<std::string, std::vector<std::wstring>>

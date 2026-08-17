@@ -37,6 +37,7 @@ private:
     wxChoice* m_gameTypeChoice;
     PGModifiableListCtrl* m_blocklistCtrl;
     PGModifiableListCtrl* m_editorIDKeywordsCtrl;
+    wxCheckBox* m_removeGrassInWinterCheckbox;
     wxCheckBox* m_dryRunCheckbox;
     wxButton* m_okButton;
     std::vector<std::wstring> m_overrideForeignSeasonMods;

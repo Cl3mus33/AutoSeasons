@@ -81,11 +81,6 @@ public:
     static void libPopulateObjs(const std::filesystem::path& existingModPath = {});
 
     /**
-     * @brief Resets mutable plugin-patching state to the post-populate baseline.
-     */
-    static void libResetPatchingState();
-
-    /**
      * @brief Writes all pending changes to the output plugin file and finalises the session.
      *
      * @param outputPath Path where the output plugin file should be written.

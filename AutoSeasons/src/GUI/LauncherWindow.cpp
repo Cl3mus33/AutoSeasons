@@ -217,6 +217,14 @@ LauncherWindow::LauncherWindow(const ASParams& initParams, filesystem::path exeP
     seasonModOverridesButton->Bind(wxEVT_BUTTON, &LauncherWindow::onManageSeasonModOverrides, this);
     generalSizer->Add(seasonModOverridesButton, 0, wxALL, BORDER_SIZE);
 
+    // Remove grass in winter - on by default (matches ASParams::removeGrassInWinter's own default),
+    // dropping any grass slot with no detected winter mesh variant rather than leaving it visible
+    // year-round under snow. Persisted like any other General-tab setting (unlike dry run below).
+    m_removeGrassInWinterCheckbox = new wxCheckBox(generalPanel, wxID_ANY,
+        ASTr("launcher.removeGrassInWinter.label", "Remove grass in winter if no winter variant exists"));
+    m_removeGrassInWinterCheckbox->SetValue(initParams.removeGrassInWinter);
+    generalSizer->Add(m_removeGrassInWinterCheckbox, 0, wxALL, BORDER_SIZE);
+
     // Dry run - deliberately not persisted to config (ASParams::dryRun is never read from/written
     // to AutoSeasons_config.json), so it always starts unchecked and has to be opted into for each
     // run rather than silently staying on and confusing a future "why didn't anything change" run.
@@ -329,8 +337,7 @@ void LauncherWindow::getParams(ASParams& outParams) const
         outParams.uiTheme = "system";
         break;
     }
-    // removeGrassInWinter has no GUI control - preserve whatever was loaded from
-    // AutoSeasons_config.json (or the ASParams default) rather than overwriting it here.
+    outParams.removeGrassInWinter = m_removeGrassInWinterCheckbox->GetValue();
     // Never ESM-flag: an ESM-flagged plugin historically could only have other ESM-flagged
     // plugins as masters, which would make depending on a regular ESP (e.g. TerrainHelper.esp,
     // for the LandscapeDefault parallax patch) unsafe. ESL-flagging (which allows depending on

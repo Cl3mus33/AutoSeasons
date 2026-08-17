@@ -173,15 +173,6 @@ void PGMutagenWrapper::libPopulateObjs(const filesystem::path& existingModPath)
     libThrowExceptionIfExists();
 }
 
-void PGMutagenWrapper::libResetPatchingState()
-{
-    const lock_guard<mutex> lock(s_libMutex);
-
-    ResetPatchingState(0);
-    libLogMessageIfExists();
-    libThrowExceptionIfExists();
-}
-
 void PGMutagenWrapper::libFinalize(const filesystem::path& outputPath,
                                    int esmMode)
 {

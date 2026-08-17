@@ -60,14 +60,6 @@ public static class MessageHandler
     private static readonly HashSet<string> WarningMessages = [];
     private static readonly HashSet<string> ErrorMessages = [];
 
-    // Called from ResetPatchingState() - without this, a legitimate rerun in the same process
-    // would silently suppress warnings/errors already logged once in a previous run.
-    public static void ResetDedupState()
-    {
-        WarningMessages.Clear();
-        ErrorMessages.Clear();
-    }
-
     public static void Log(string message, int level = 0)
     {
         // Level values
@@ -148,10 +140,6 @@ public class ASMutagen
     private static Dictionary<string[], ITextureSet> NewTextureSets = new(new StructuralArrayComparer());
     private static SortedSet<uint> allocatedFormIDs = [];
     private static uint lastUsedFormID = 1;
-
-    // Baseline captured immediately after PopulateObjs() to support rerun resets.
-    private static SortedSet<uint> InitialAllocatedFormIDs = [];
-    private static uint InitialLastUsedFormID = 1;
 
     private static SkyrimRelease GameType;
     private static Language PluginLanguage = Language.English;
@@ -401,34 +389,6 @@ public class ASMutagen
                 // order, but harmless either way) - matches indexer assignment semantics elsewhere.
                 GrassByEditorID[grass.EditorID.ToLowerInvariant()] = grass;
             }
-
-            // Capture baseline immediately after PopulateObjs so reruns can reset to this state.
-            InitialAllocatedFormIDs = [.. allocatedFormIDs];
-            InitialLastUsedFormID = lastUsedFormID;
-        }
-        catch (Exception ex)
-        {
-            ExceptionHandler.SetLastException(ex);
-        }
-    }
-
-    [UnmanagedCallersOnly(EntryPoint = "ResetPatchingState", CallConvs = [typeof(CallConvCdecl)])]
-    public static void ResetPatchingState([DNNE.C99Type("const int")] int _reserved)
-    {
-        try
-        {
-            if (Env is null || SeasonsMod is null)
-            {
-                throw new Exception("Initialize must be called before ResetPatchingState");
-            }
-
-            // Restore allocation state from the post-PopulateObjs baseline.
-            allocatedFormIDs = [.. InitialAllocatedFormIDs];
-            lastUsedFormID = InitialLastUsedFormID;
-
-            SeasonsMod = new SkyrimMod(ModKey.FromFileName("AutoSeasons.esp"), GameType);
-            NewTextureSets = new Dictionary<string[], ITextureSet>(new StructuralArrayComparer());
-            MessageHandler.ResetDedupState();
         }
         catch (Exception ex)
         {

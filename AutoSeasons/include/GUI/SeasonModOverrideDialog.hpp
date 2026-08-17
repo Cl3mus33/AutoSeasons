@@ -51,6 +51,11 @@ private:
     std::unordered_map<std::string, std::vector<std::wstring>> m_overridesByType;
 
     std::vector<std::wstring> m_modNames; ///< Index-matched to m_modList's rows, current global order.
+    /// @brief True once the user has actually reordered m_modList (Move Up/Down), or a global
+    /// priority order already existed when the dialog opened. Guards getPriorityOrder(): opening
+    /// this dialog, scanning, and clicking OK without ever touching the order must NOT silently
+    /// commit an arbitrary (freshly-scanned) order as if the user had deliberately chosen it.
+    bool m_priorityOrderChanged = false;
 
     wxCheckListBox* m_modList;
     wxButton* m_moveUpButton;
