@@ -12,19 +12,22 @@
 
 /**
  * @brief Lets the user manage how AutoSeasons resolves conflicts between foreign mods' own
- * Data/Seasons coverage:
- *  - which mods (if any) AutoSeasons should override entirely - AutoSeasons generates its own
+ * Data/Seasons coverage. Every mod in the list starts CHECKED (respected/kept) - unchecking one
+ * tells AutoSeasons to overwrite it instead:
+ *  - which mods (if any) AutoSeasons should overwrite entirely - AutoSeasons generates its own
  *    seasonal duplicate wherever it has the art, AND that mod's own raw ini line is dropped from
  *    the merged output entirely (so a record AutoSeasons has no art for falls back to no swap,
- *    rather than silently keeping the overridden mod's own swap);
- *  - a cross-mod priority order used when two or more (non-overridden) foreign mods both declare
+ *    rather than silently keeping the overwritten mod's own swap);
+ *  - a cross-mod priority order used when two or more (non-overwritten) foreign mods both declare
  *    a swap for the very same base record - the mod lower in the list wins, matching Mod
  *    Organizer's own left-pane priority convention (bottom = wins);
- *  - an optional per-record-type override of both the above (e.g. overriding a mod, or preferring
+ *  - an optional per-record-type override of both the above (e.g. overwriting a mod, or preferring
  *    a different one, just for TREE records without touching every other type).
  * Scans the current game location for every distinct foreign season mod (via
  * SeasonPatcher::discoverForeignSeasonMods()). Shown modally; on OK, getSelectedOverrides()/
- * getPriorityOrder()/getOverridesByType()/getPriorityByType() return the edited settings.
+ * getPriorityOrder()/getOverridesByType()/getPriorityByType() return the edited settings (still
+ * "list of overwritten mods", matching ASParams/AutoSeasons_config.json - the checkbox inversion
+ * is purely a GUI-display concern, not a change to the underlying data model).
  */
 class SeasonModOverrideDialog : public wxDialog {
 public:

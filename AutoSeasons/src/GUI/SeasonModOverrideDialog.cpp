@@ -47,11 +47,12 @@ SeasonModOverrideDialog::SeasonModOverrideDialog(wxWindow* parent, filesystem::p
     auto* introText = new wxStaticText(this, wxID_ANY,
         ASTr("seasonModOverrides.intro",
             "AutoSeasons normally defers to another mod's own Data/Seasons ini whenever it already "
-            "covers a record for a season. Check a mod below to have AutoSeasons override it "
-            "instead: it generates its own seasonal texture wherever it has the art, and that mod's "
-            "own declaration is dropped entirely (so a record with no AutoSeasons art falls back to "
-            "no swap, not the overridden mod's swap). When two non-overridden mods both cover the "
-            "same record, the one lower in the list wins (like Mod Organizer's own load order)."));
+            "covers a record for a season - every mod below starts checked (respected). Uncheck a "
+            "mod to have AutoSeasons overwrite it instead: it generates its own seasonal texture "
+            "wherever it has the art, and that mod's own declaration is dropped entirely (so a "
+            "record with no AutoSeasons art falls back to no swap, not the overwritten mod's swap). "
+            "When two respected mods both cover the same record, the one lower in the list wins "
+            "(like Mod Organizer's own load order)."));
     introText->Wrap(440);
     mainSizer->Add(introText, 0, wxALL, BORDER_SIZE * 2);
 
@@ -63,7 +64,9 @@ SeasonModOverrideDialog::SeasonModOverrideDialog(wxWindow* parent, filesystem::p
     // its position each mean something different (unlike a typical MO2/Vortex load-order checklist,
     // where checking usually just means "enabled"), and that's easy to misread at a glance.
     auto* modListLegend = new wxStaticText(
-        this, wxID_ANY, ASTr("seasonModOverrides.legend", "Checked = override this mod entirely   |   Position = priority order (bottom wins)"));
+        this, wxID_ANY, ASTr("seasonModOverrides.legend",
+            "Checked = keep this mod's own coverage   |   Unchecked = overwrite it with AutoSeasons' own texture   |   "
+            "Position = priority order (bottom wins)"));
     wxFont legendFont = modListLegend->GetFont();
     legendFont.SetStyle(wxFONTSTYLE_ITALIC);
     modListLegend->SetFont(legendFont);
@@ -91,8 +94,8 @@ SeasonModOverrideDialog::SeasonModOverrideDialog(wxWindow* parent, filesystem::p
 
     auto* typeIntroText = new wxStaticText(this, wxID_ANY,
         ASTr("seasonModOverrides.typeIntro",
-            "Optional: use different override/priority choices for one specific record type (e.g. "
-            "override a mod, or prefer a different one, just for trees without touching every other "
+            "Optional: use different overwrite/priority choices for one specific record type (e.g. "
+            "overwrite a mod, or prefer a different one, just for trees without touching every other "
             "type)."));
     typeIntroText->Wrap(440);
     mainSizer->Add(typeIntroText, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE * 2);
@@ -108,14 +111,16 @@ SeasonModOverrideDialog::SeasonModOverrideDialog(wxWindow* parent, filesystem::p
     typeChoiceSizer->Add(m_typeChoice, 0, wxALL, BORDER_SIZE);
 
     m_customizeTypeCheckbox = new wxCheckBox(
-        this, wxID_ANY, ASTr("seasonModOverrides.customizeType", "Customize overrides/order for this type"));
+        this, wxID_ANY, ASTr("seasonModOverrides.customizeType", "Customize overwrites/order for this type"));
     m_customizeTypeCheckbox->Bind(wxEVT_CHECKBOX, &SeasonModOverrideDialog::onCustomizeTypeToggled, this);
     typeChoiceSizer->Add(m_customizeTypeCheckbox, 0, wxALL | wxALIGN_CENTER_VERTICAL, BORDER_SIZE);
 
     mainSizer->Add(typeChoiceSizer, 0, wxLEFT | wxRIGHT, BORDER_SIZE);
 
     auto* typeListLegend = new wxStaticText(
-        this, wxID_ANY, ASTr("seasonModOverrides.legend", "Checked = override this mod entirely   |   Position = priority order (bottom wins)"));
+        this, wxID_ANY, ASTr("seasonModOverrides.legend",
+            "Checked = keep this mod's own coverage   |   Unchecked = overwrite it with AutoSeasons' own texture   |   "
+            "Position = priority order (bottom wins)"));
     wxFont typeListLegendFont = typeListLegend->GetFont();
     typeListLegendFont.SetStyle(wxFONTSTYLE_ITALIC);
     typeListLegend->SetFont(typeListLegendFont);
@@ -197,7 +202,9 @@ void SeasonModOverrideDialog::runScan()
         const bool wasOverridden = std::ranges::any_of(m_initialOverrides, [&](const auto& name) {
             return boost::algorithm::to_lower_copy(name) == modNameLower;
         });
-        if (wasOverridden) {
+        // Checked = respected (kept), unchecked = overwritten - the inverse of m_initialOverrides'
+        // own "list of overwritten mods" storage, so a mod starts checked unless it was overwritten.
+        if (!wasOverridden) {
             m_modList->Check(static_cast<unsigned int>(index), true);
         }
     }
@@ -229,10 +236,11 @@ void SeasonModOverrideDialog::populateTypeOrderList()
         for (const auto& name : orderIt->second) {
             const auto index = m_typeOrderList->Append(wxString(name));
             const auto nameLower = boost::algorithm::to_lower_copy(name);
-            const bool checked = std::ranges::any_of(overridesForType, [&](const auto& overriddenName) {
+            const bool overwritten = std::ranges::any_of(overridesForType, [&](const auto& overriddenName) {
                 return boost::algorithm::to_lower_copy(overriddenName) == nameLower;
             });
-            if (checked) {
+            // Checked = respected (kept), unchecked = overwritten - same inversion as m_modList.
+            if (!overwritten) {
                 m_typeOrderList->Check(static_cast<unsigned int>(index), true);
             }
         }
@@ -267,7 +275,8 @@ void SeasonModOverrideDialog::saveTypeListState()
     for (unsigned int i = 0; i < m_typeOrderList->GetCount(); i++) {
         const auto name = m_typeOrderList->GetString(i).ToStdWstring();
         order.push_back(name);
-        if (m_typeOrderList->IsChecked(i)) {
+        // Unchecked = overwritten (checked = respected/kept) - see m_modList's own inversion.
+        if (!m_typeOrderList->IsChecked(i)) {
             overridden.push_back(name);
         }
     }
@@ -380,9 +389,10 @@ void SeasonModOverrideDialog::onTypeMoveDownPressed([[maybe_unused]] wxCommandEv
 
 auto SeasonModOverrideDialog::getSelectedOverrides() const -> std::vector<std::wstring>
 {
+    // Unchecked = overwritten (checked = respected/kept) - see m_modList's own inversion.
     vector<wstring> result;
     for (size_t i = 0; i < m_modNames.size(); i++) {
-        if (m_modList->IsChecked(static_cast<unsigned int>(i))) {
+        if (!m_modList->IsChecked(static_cast<unsigned int>(i))) {
             result.push_back(m_modNames.at(i));
         }
     }

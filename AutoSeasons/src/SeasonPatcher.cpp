@@ -665,29 +665,35 @@ struct ForeignSeasonCoverage {
     }
 
     // Result of resolveEffectiveCoverage(): whether a record already known to be covered
-    // (isCovered() true) is STILL covered once the user's overrides are accounted for, and if so,
-    // which mod (and its raw target string, if one was captured) should be treated as governing it.
+    // (isCovered() true) is STILL covered once the user's overwrites are accounted for. `mod`/
+    // `target` name the mod that's most relevant either way: when stillCovered is true, it's the
+    // winning NON-overwritten mod (texture AND grass should defer to it); when stillCovered is
+    // false, it's the winning mod AMONG the overwritten ones instead - not to respect its texture
+    // (which is being replaced), but so a caller can still borrow that mod's own grass list rather
+    // than falling back to independent grass detection. nullopt only when coverage isn't
+    // attributable to a specific mod at all (case 1 below).
     struct EffectiveCoverage {
         bool stillCovered = true;
-        optional<wstring> mod; // nullopt when coverage isn't attributable to one specific mod (see below)
+        optional<wstring> mod;
         optional<wstring> target;
     };
 
     // Given a record already known to be covered (isCovered() true), decides whether that coverage
-    // should still apply after accounting for the user's overrides, and which mod governs it if so.
-    // Three cases:
+    // should still apply after accounting for the user's overwrites, and which mod is most relevant
+    // either way. Three cases:
     //  1. The composite key has no entry in coveringModsWithTargetsBy*Key at all - this happens
     //     when isCovered() matched only via knownForeignSeasonalTargetsByEditorID (a record that's
     //     itself the seasonal-target side of some mod's own declaration), which isn't attributable
     //     to any specific covering mod. Always still covered: { .stillCovered = true, .mod = nullopt }.
-    //  2. An entry exists and at least one covering mod remains after removing overridden ones -
-    //     still covered, naming the WINNING mod: the one ranked latest in priorityList (matching
-    //     the "later wins" convention run()'s own raw-line-priority sort uses for the merged ini),
-    //     or - if priority doesn't resolve a genuine multi-mod conflict either (already surfaced by
-    //     run()'s own warning) - the alphabetically-first candidate, so the same run always makes
-    //     the same choice instead of depending on unordered_map iteration order.
-    //  3. An entry exists but EVERY covering mod for it was overridden - no longer covered:
-    //     { .stillCovered = false }.
+    //  2. At least one covering mod remains after removing overwritten ones - still covered, naming
+    //     the WINNING mod: the one ranked latest in priorityList (matching the "later wins"
+    //     convention run()'s own raw-line-priority sort uses for the merged ini), or - if priority
+    //     doesn't resolve a genuine multi-mod conflict either (already surfaced by run()'s own
+    //     warning) - the alphabetically-first candidate, so the same run always makes the same
+    //     choice instead of depending on unordered_map iteration order.
+    //  3. EVERY covering mod for this key was overwritten - no longer covered at the texture level
+    //     ({ .stillCovered = false }), but `mod`/`target` still name the winning mod AMONG the
+    //     overwritten ones (same tie-break as case 2), so a caller can still borrow ITS grass list.
     [[nodiscard]] auto resolveEffectiveCoverage(string_view season, string_view recordType, const wstring& modName,
         unsigned int formID, const wstring& editorID, const unordered_set<wstring>& overrideSet,
         const vector<wstring>& priorityList) const -> EffectiveCoverage
@@ -707,36 +713,48 @@ struct ForeignSeasonCoverage {
             return {}; // case 1: not attributable to a specific mod - still covered
         }
 
-        vector<pair<wstring, wstring>> candidates;
-        for (const auto& [mod, target] : *mods) {
-            if (!overrideSet.contains(boost::algorithm::to_lower_copy(mod))) {
-                candidates.emplace_back(mod, target);
-            }
-        }
-        if (candidates.empty()) {
-            return { .stillCovered = false }; // case 3: every covering mod was overridden
-        }
-
-        pair<wstring, wstring> winner = candidates.front();
-        if (candidates.size() > 1) {
-            bool ranked = false;
-            size_t bestRank = 0;
-            for (const auto& candidate : candidates) {
-                const auto candidateLower = boost::algorithm::to_lower_copy(candidate.first);
-                for (size_t i = 0; i < priorityList.size(); i++) {
-                    if (boost::algorithm::to_lower_copy(priorityList[i]) == candidateLower && (!ranked || i > bestRank)) {
-                        ranked = true;
-                        bestRank = i;
-                        winner = candidate;
+        // Picks the "winning" candidate by priority rank (later in priorityList wins, matching the
+        // raw-line sort's own convention below in run()), falling back to the alphabetically-first
+        // candidate when priority doesn't resolve it (a genuinely unresolved conflict, already
+        // logged by run()'s own warning) - shared between the respected- and overwritten-mod cases.
+        const auto pickWinner = [&](vector<pair<wstring, wstring>>& candidates) -> pair<wstring, wstring> {
+            pair<wstring, wstring> winner = candidates.front();
+            if (candidates.size() > 1) {
+                bool ranked = false;
+                size_t bestRank = 0;
+                for (const auto& candidate : candidates) {
+                    const auto candidateLower = boost::algorithm::to_lower_copy(candidate.first);
+                    for (size_t i = 0; i < priorityList.size(); i++) {
+                        if (boost::algorithm::to_lower_copy(priorityList[i]) == candidateLower && (!ranked || i > bestRank)) {
+                            ranked = true;
+                            bestRank = i;
+                            winner = candidate;
+                        }
                     }
                 }
+                if (!ranked) {
+                    ranges::sort(candidates, [](const auto& a, const auto& b) { return a.first < b.first; });
+                    winner = candidates.front();
+                }
             }
-            if (!ranked) {
-                ranges::sort(candidates, [](const auto& a, const auto& b) { return a.first < b.first; });
-                winner = candidates.front();
-            }
+            return winner;
+        };
+
+        vector<pair<wstring, wstring>> respected;
+        vector<pair<wstring, wstring>> overwritten;
+        for (const auto& [mod, target] : *mods) {
+            (overrideSet.contains(boost::algorithm::to_lower_copy(mod)) ? overwritten : respected).emplace_back(mod, target);
         }
-        return { .stillCovered = true, .mod = winner.first, .target = winner.second.empty() ? optional<wstring> {} : winner.second };
+
+        if (!respected.empty()) {
+            const auto winner = pickWinner(respected);
+            return { .stillCovered = true, .mod = winner.first, .target = winner.second.empty() ? optional<wstring> {} : winner.second };
+        }
+
+        // case 3: every covering mod was overwritten - not covered at the texture level, but still
+        // surface the winning overwritten mod so a caller can borrow its grass list.
+        const auto winner = pickWinner(overwritten);
+        return { .stillCovered = false, .mod = winner.first, .target = winner.second.empty() ? optional<wstring> {} : winner.second };
     }
 };
 
@@ -1556,11 +1574,24 @@ auto SeasonPatcher::run(PGDirectory* pgd, const std::vector<std::wstring>& meshB
                             entry.editorID, StringUtil::utf8toUTF16(string(season)), effective.mod.value_or(L"?"));
                         continue; // genuinely another mod's own territory - leave it alone, as before
                     }
+                } else if (effective.target.has_value()) {
+                    // Every mod covering this record was overwritten - AutoSeasons generates its
+                    // own texture below rather than deferring to the overwritten mod's, but its
+                    // grass choice is still worth keeping instead of falling back to our own
+                    // independent per-slot detection. Unlike the "respected" branch above, this is
+                    // NOT gated on the diffuse matching ours - we already know we're replacing the
+                    // texture, so a real (non-grass-only) texture difference on the overwritten
+                    // mod's side is irrelevant here; only its grass list matters.
+                    borrowedGrassSource = resolveForeignLTEXTarget(*effective.target, ltexByFormKey, ltexByEditorID);
+                    if (borrowedGrassSource.has_value()) {
+                        foreignRetargetCount++;
+                        Logger::debug(L"[{}] season={}: overwriting foreign mod \"{}\"'s texture but keeping its grass list",
+                            entry.editorID, StringUtil::utf8toUTF16(string(season)), *effective.mod);
+                    }
                 }
-                // else: every mod covering this record was overridden - skip the grass-borrow
-                // special case entirely and fall through to full normal generation below (own
-                // texture AND own grass detection, not a borrowed grass list) - a full override,
-                // not just the narrow grass-only bypass.
+                // else (no target captured for the overwritten mod, or it didn't resolve to a real
+                // LTEX): fall through to full normal generation below (own texture AND own
+                // independent grass detection) - there's nothing to borrow.
             }
 
             const auto seasonResult = buildSeasonalSlots(pgd, ltexBaseSlots, season, terrainHelperPresent, pbrConfigIndex);
