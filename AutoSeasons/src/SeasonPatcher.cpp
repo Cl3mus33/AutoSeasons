@@ -1518,6 +1518,11 @@ auto SeasonPatcher::run(PGDirectory* pgd, const std::vector<std::wstring>& meshB
 
     wstring anyParallaxFound; // first seasonal parallax texture encountered, for LandscapeDefault
     std::optional<std::array<std::wstring, NUM_PLUGIN_TEXTURE_SLOTS>> defaultPBRLandSlots;
+    // The vanilla-default LTEX's own PBRTextureSets config, if it has one - cloned for
+    // "DefaultPBRLand" after the loop, same as every other PBR TXST's config gets cloned for its
+    // own EditorID, so Community Shaders reads DefaultPBRLand's real roughness/subsurface/etc.
+    // instead of falling back to defaults just because AutoSeasons created the record.
+    std::optional<filesystem::path> defaultPBRLandTextureSetConfigPath;
 
     const auto allLandscapeTextures = PGMutagenWrapper::libEnumerateLandscapeTextures();
 
@@ -1574,6 +1579,13 @@ auto SeasonPatcher::run(PGDirectory* pgd, const std::vector<std::wstring>& meshB
         // Hoisted out of the season loop below - entry.txstEditorID doesn't change per season, so
         // this was being looked up up to 4x (once per season) for an identical result each time.
         const auto baseTextureSetConfigPath = findPBRTextureSetFile(pbrTextureSetIndex, entry.txstEditorID);
+
+        // This is the same entry defaultPBRLandSlots was just captured from (the guard above only
+        // lets that happen once) - reuse its own PBRTextureSets config, if any, to clone for
+        // "DefaultPBRLand" after the loop, instead of a second lookup.
+        if (defaultPBRLandSlots.has_value() && !defaultPBRLandTextureSetConfigPath.has_value()) {
+            defaultPBRLandTextureSetConfigPath = baseTextureSetConfigPath;
+        }
 
         for (const auto season : SEASONS) {
             // A record's own EDID/GNAM/grass-swap is one thing, but its TXST/texture is another -
@@ -1748,6 +1760,22 @@ auto SeasonPatcher::run(PGDirectory* pgd, const std::vector<std::wstring>& meshB
     patchLandscapeDefaultParallax(pgd, anyParallaxFound);
     if (defaultPBRLandSlots.has_value()) {
         ensureDefaultPBRLand(*defaultPBRLandSlots);
+
+        // Same clone-if-none-exists pattern as every other PBR TXST's PBRTextureSets config below -
+        // without this, Community Shaders reads a "DefaultPBRLand" TextureSet with no matching
+        // config and falls back to default roughness/subsurface/etc. instead of the real material's
+        // own settings, even though ensureDefaultPBRLand() just gave it the right texture slots.
+        if (defaultPBRLandTextureSetConfigPath.has_value()
+            && !findPBRTextureSetFile(pbrTextureSetIndex, L"DefaultPBRLand").has_value()) {
+            try {
+                outPBRTextureSets.push_back(PBRTextureSetFile {
+                    .relativePath = filesystem::path(L"PBRTextureSets") / L"DefaultPBRLand.json",
+                    .content = nlohmann::json::parse(bytesToString(pgd->getFile(*defaultPBRLandTextureSetConfigPath))),
+                });
+            } catch (const exception& e) {
+                Logger::warn(L"Failed to clone PBRTextureSets config for DefaultPBRLand: {}", StringUtil::utf8toUTF16(e.what()));
+            }
+        }
     }
 
     if (seasonLockedSkipCount > 0) {
