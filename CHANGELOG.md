@@ -5,6 +5,40 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-08-20
+
+### Fixed
+- A 0-byte/unreadable mesh file (a broken file shipped by another mod) aborted the entire
+  generation run with an unhandled "File is empty" error instead of just skipping that one mesh -
+  now caught, logged as a warning, and the run continues.
+- PBR-only load orders could pull in `TerrainHelper.esp` as an unnecessary plugin master purely
+  because a PBR landscape texture has its own native displacement map - `TerrainHelper.esp` is now
+  only referenced when actually patching a *vanilla* landscape texture's parallax slot.
+- `DefaultPBRLand` now also gets a matching `PBRTextureSets` config cloned from its source material
+  when AutoSeasons creates the record itself, instead of only the bare TextureSet.
+- A PBR rule that omits its normal map or RMAOS slot now falls back to the conventionally-named
+  sibling file on disk (`..._n.dds`/`..._rmaos.dds`) if one genuinely exists, instead of leaving the
+  slot empty.
+- Foreign `Data/Seasons` conflict resolution now genuinely respects the configured override/priority
+  settings for grass-borrowing and coverage-skip decisions across every foreign mod involved,
+  instead of just the most-recently-scanned one winning.
+- 24 GUI strings (the Season Mod Conflicts dialog, Config Profile section, remove-grass-in-winter/
+  dry-run labels, the MO2/Vortex warning, and the completion message variants) were missing from
+  every translation file, including the English one, and always fell back to their English default
+  regardless of the selected language. Also fixed a stale completion message left over from before
+  it gained a per-record-type breakdown.
+
+### Changed
+- Simplified the "Manage Season Mod Conflicts" dialog to a single reorderable list (respect/
+  overwrite a foreign mod, with drag-to-reorder priority), removing the separate per-record-type
+  customization table - the engine still supports per-type overrides via
+  `AutoSeasons_config.json` for anyone who wants that granularity, just without a dedicated second
+  table cluttering the everyday case.
+
+### Removed
+- Dead `PGModManager` mod-attribution code (inherited from PGPatcher, never actually wired up -
+  AutoSeasons always relied on the mod manager's own virtual file system for active-mod filtering).
+
 ## [1.0.0] - 2026-08-14
 
 Initial public release. AutoSeasons scans your Skyrim SE load order for seasonal texture and mesh
