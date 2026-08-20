@@ -3,6 +3,7 @@
   "common": {
     "browse": "Procurar",
     "cancel": "Cancelar",
+    "ok": "OK",
     "add": "Adicionar",
     "remove": "Remover"
   },
@@ -21,9 +22,18 @@
       "dark": "Escuro"
     },
     "intro": "Analisa sua ordem de carregamento em busca de variantes de textura sazonais (ex.: rock01_AUT.dds ao lado de rock01.dds) e gera o plugin além dos arquivos Data/Seasons/*.ini para o plugin SKSE Seasons of Skyrim.",
+    "configProfile": {
+      "label": "Perfil de configuração",
+      "load": "Carregar configuração...",
+      "saveAs": "Salvar configuração como...",
+      "loadDialogTitle": "Carregar configuração",
+      "saveDialogTitle": "Salvar configuração como",
+      "fileFilter": "Arquivos JSON (*.json)|*.json|Todos os arquivos (*.*)|*.*"
+    },
     "gameLocation": {
       "label": "Local do jogo",
-      "dialogTitle": "Selecionar local do jogo"
+      "dialogTitle": "Selecionar local do jogo",
+      "mo2Warning": "Se você usa o Mod Organizer 2 ou o Vortex, execute o AutoSeasons pela lista de ferramentas/painel dele, não dando duplo clique no exe pelo Explorador de Arquivos - caso contrário, ele só verá sua pasta Data real, não seus mods instalados, e produzirá silenciosamente um resultado incompleto."
     },
     "gameType": {
       "label": "Tipo de jogo"
@@ -42,6 +52,15 @@
       "help": "Registros cujo EditorID contenha uma dessas palavras (sem diferenciar maiúsculas/minúsculas) são totalmente excluídos da variação sazonal - útil para nomes que já indicam uma estação/bioma fixo, ex.: \"Coast\" ou \"River\". Clique com o botão direito para adicionar/remover linhas.",
       "column": "Palavra-chave"
     },
+    "seasonModOverrides": {
+      "button": "Gerenciar conflitos de mods sazonais..."
+    },
+    "removeGrassInWinter": {
+      "label": "Remover grama no inverno se não existir uma variante de inverno"
+    },
+    "dryRun": {
+      "label": "Somente pré-visualização (dry run) - analisa e registra o que aconteceria, sem gravar nada"
+    },
     "startButton": "Iniciar aplicação",
     "missingGameLocation": {
       "title": "Local do jogo ausente",
@@ -51,6 +70,17 @@
       "title": "Local de saída ausente",
       "message": "Selecione um local de saída."
     }
+  },
+  "seasonModOverrides": {
+    "title": "Conflitos de mods sazonais",
+    "intro": "O AutoSeasons normalmente cede ao próprio ini de Data/Seasons de outro mod sempre que ele já cobre um registro para uma estação - todo mod abaixo começa marcado (respeitado). Desmarque um mod para que o AutoSeasons o sobrescreva: ele gera sua própria textura sazonal onde tiver a arte, descartando completamente a declaração daquele mod. Quando dois mods respeitados cobrem o mesmo registro, vence o que estiver mais abaixo na lista (como a própria ordem de carregamento do Mod Organizer).",
+    "noArtWarning": "Desmarcar um mod remove sua troca para um registro do qual o AutoSeasons não tem arte sazonal própria - ele NÃO volta a manter a troca daquele mod.",
+    "scanButton": "Escanear",
+    "legend": "Marcado = manter a cobertura própria deste mod   |   Desmarcado = sobrescrever com a própria textura do AutoSeasons   |   Posição = ordem de prioridade (o de baixo vence)",
+    "moveUp": "Mover para cima",
+    "moveDown": "Mover para baixo",
+    "scanError": "Não foi possível escanear: ",
+    "noModsFound": "Nenhum mod sazonal externo detectado em Data/Seasons."
   },
   "progress": {
     "starting": "Iniciando...",
@@ -62,7 +92,11 @@
     "failedClose": "Falha - Fechar",
     "completion": {
       "title": "AutoSeasons",
-      "message": "Geração concluída. Não se esqueça de ativar o AutoSeasons.esp na lista de plugins do seu gerenciador de mods, caso ainda não esteja ativo."
+      "message": "Geração concluída - %zu registro(s) sazonal(is) criado(s) (%s). Não se esqueça de ativar o AutoSeasons.esp na lista de plugins do seu gerenciador de mods, caso ainda não esteja ativo.",
+      "zeroMessage": "Geração concluída, mas 0 registros sazonais foram criados. Verifique o local do seu jogo e as configurações de lista de exclusão/palavras-chave - isso geralmente significa que o AutoSeasons não encontrou a ordem de carregamento esperada.",
+      "dryRunMessage": "Pré-visualização concluída - %zu registro(s) sazonal(is) seriam criados (%s). Nada foi gravado no disco.",
+      "zeroDryRunMessage": "Pré-visualização concluída, mas 0 registros sazonais seriam criados. Verifique o local do seu jogo e as configurações de lista de exclusão/palavras-chave - isso geralmente significa que o AutoSeasons não encontrou a ordem de carregamento esperada.",
+      "conflictsSuffix": "\n\n%zu combinação(ões) de registro/estação são cobertas por vários mods externos sem prioridade definida entre eles - veja o log, ou abra \"Gerenciar conflitos de mods sazonais\" no launcher para decidir qual deve vencer."
     }
   }
 }

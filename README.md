@@ -82,6 +82,8 @@ CMake build (via DNNE, which exports it as a native DLL callable from the C++ si
   files.
 - [Seasons of Skyrim](https://www.nexusmods.com/skyrimspecialedition/mods/62861) by powerof3, the
   SKSE plugin this tool generates data for.
+- Developed by Cl3mus33 with [Claude](https://claude.com/claude-code), used throughout as an
+  active coding collaborator on this project's design and implementation.
 
 ## License
 

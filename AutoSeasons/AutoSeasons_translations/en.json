@@ -3,6 +3,7 @@
   "common": {
     "browse": "Browse",
     "cancel": "Cancel",
+    "ok": "OK",
     "add": "Add",
     "remove": "Remove"
   },
@@ -21,9 +22,18 @@
       "dark": "Dark"
     },
     "intro": "Scans your load order for seasonal texture variants (e.g. rock01_AUT.dds next to rock01.dds) and generates the plugin + Data/Seasons/*.ini files for the Seasons of Skyrim SKSE plugin.",
+    "configProfile": {
+      "label": "Config Profile",
+      "load": "Load Config...",
+      "saveAs": "Save Config As...",
+      "loadDialogTitle": "Load Config",
+      "saveDialogTitle": "Save Config As",
+      "fileFilter": "JSON files (*.json)|*.json|All files (*.*)|*.*"
+    },
     "gameLocation": {
       "label": "Game Location",
-      "dialogTitle": "Select Game Location"
+      "dialogTitle": "Select Game Location",
+      "mo2Warning": "If you use Mod Organizer 2 or Vortex, run AutoSeasons through its tool list/dashboard, not by double-clicking the exe in Explorer - otherwise it only sees your real Data folder, not your installed mods, and silently produces an incomplete result."
     },
     "gameType": {
       "label": "Game Type"
@@ -42,6 +52,15 @@
       "help": "Records whose EditorID contains one of these words (case-insensitive) are skipped by seasonal variation entirely - useful for names that already signal a fixed season/biome, e.g. \"Coast\" or \"River\". Right click to add/remove rows.",
       "column": "Keyword"
     },
+    "seasonModOverrides": {
+      "button": "Manage Season Mod Conflicts..."
+    },
+    "removeGrassInWinter": {
+      "label": "Remove grass in winter if no winter variant exists"
+    },
+    "dryRun": {
+      "label": "Preview only (dry run) - scan and log what would happen, write nothing"
+    },
     "startButton": "Start Patching",
     "missingGameLocation": {
       "title": "Missing Game Location",
@@ -51,6 +70,17 @@
       "title": "Missing Output Location",
       "message": "Please select an output location."
     }
+  },
+  "seasonModOverrides": {
+    "title": "Season Mod Conflicts",
+    "intro": "AutoSeasons normally defers to another mod's own Data/Seasons ini whenever it already covers a record for a season - every mod below starts checked (respected). Uncheck a mod to have AutoSeasons overwrite it instead: it generates its own seasonal texture wherever it has the art, dropping that mod's own declaration entirely. When two respected mods both cover the same record, the one lower in the list wins (like Mod Organizer's own load order).",
+    "noArtWarning": "Unchecking a mod removes its swap for a record AutoSeasons has no seasonal art of its own for - it does NOT fall back to keeping that mod's swap.",
+    "scanButton": "Scan",
+    "legend": "Checked = keep this mod's own coverage   |   Unchecked = overwrite it with AutoSeasons' own texture   |   Position = priority order (bottom wins)",
+    "moveUp": "Move Up",
+    "moveDown": "Move Down",
+    "scanError": "Could not scan: ",
+    "noModsFound": "No foreign season mods detected under Data/Seasons."
   },
   "progress": {
     "starting": "Starting...",
@@ -62,7 +92,11 @@
     "failedClose": "Failed - Close",
     "completion": {
       "title": "AutoSeasons",
-      "message": "Generation complete. Don't forget to enable AutoSeasons.esp in your mod manager's plugin list if it isn't already active."
+      "message": "Generation complete - created %zu seasonal record(s) (%s). Don't forget to enable AutoSeasons.esp in your mod manager's plugin list if it isn't already active.",
+      "zeroMessage": "Generation complete, but 0 seasonal records were created. Double-check your game directory and blocklist/keyword settings - this usually means AutoSeasons didn't find the load order it expected.",
+      "dryRunMessage": "Preview complete - would create %zu seasonal record(s) (%s). Nothing was written to disk.",
+      "zeroDryRunMessage": "Preview complete, but 0 seasonal records would be created. Double-check your game directory and blocklist/keyword settings - this usually means AutoSeasons didn't find the load order it expected.",
+      "conflictsSuffix": "\n\n%zu record/season combination(s) are covered by multiple foreign mods with no priority set between them - see the log, or open \"Manage Season Mod Conflicts\" in the launcher to resolve which one should win."
     }
   }
 }

@@ -3,6 +3,7 @@
   "common": {
     "browse": "Examinar",
     "cancel": "Cancelar",
+    "ok": "Aceptar",
     "add": "Añadir",
     "remove": "Eliminar"
   },
@@ -21,9 +22,18 @@
       "dark": "Oscuro"
     },
     "intro": "Analiza tu orden de carga en busca de variantes de texturas estacionales (p. ej. rock01_AUT.dds junto a rock01.dds) y genera el plugin más los archivos Data/Seasons/*.ini para el plugin SKSE Seasons of Skyrim.",
+    "configProfile": {
+      "label": "Perfil de configuración",
+      "load": "Cargar configuración...",
+      "saveAs": "Guardar configuración como...",
+      "loadDialogTitle": "Cargar configuración",
+      "saveDialogTitle": "Guardar configuración como",
+      "fileFilter": "Archivos JSON (*.json)|*.json|Todos los archivos (*.*)|*.*"
+    },
     "gameLocation": {
       "label": "Ubicación del juego",
-      "dialogTitle": "Seleccionar ubicación del juego"
+      "dialogTitle": "Seleccionar ubicación del juego",
+      "mo2Warning": "Si usas Mod Organizer 2 o Vortex, ejecuta AutoSeasons desde su lista de herramientas/panel, no haciendo doble clic en el exe desde el Explorador - de lo contrario solo verá tu carpeta Data real, no tus mods instalados, y producirá silenciosamente un resultado incompleto."
     },
     "gameType": {
       "label": "Tipo de juego"
@@ -42,6 +52,15 @@
       "help": "Los registros cuyo EditorID contenga una de estas palabras (sin distinguir mayúsculas/minúsculas) se excluyen por completo de la variación estacional - útil para nombres que ya indican una estación/bioma fijo, p. ej. \"Coast\" o \"River\". Clic derecho para añadir/quitar filas.",
       "column": "Palabra clave"
     },
+    "seasonModOverrides": {
+      "button": "Gestionar conflictos de mods estacionales..."
+    },
+    "removeGrassInWinter": {
+      "label": "Quitar la hierba en invierno si no existe una variante invernal"
+    },
+    "dryRun": {
+      "label": "Solo vista previa (simulación) - analiza y registra lo que ocurriría, sin escribir nada"
+    },
     "startButton": "Iniciar parcheo",
     "missingGameLocation": {
       "title": "Falta la ubicación del juego",
@@ -51,6 +70,17 @@
       "title": "Falta la ubicación de salida",
       "message": "Selecciona una ubicación de salida."
     }
+  },
+  "seasonModOverrides": {
+    "title": "Conflictos de mods estacionales",
+    "intro": "AutoSeasons normalmente cede ante el propio ini de Data/Seasons de otro mod cuando este ya cubre un registro para una estación - todos los mods de abajo empiezan marcados (respetados). Desmarca un mod para que AutoSeasons lo sobrescriba en su lugar: genera su propia textura estacional allí donde tenga el arte, descartando por completo la declaración de ese mod. Cuando dos mods respetados cubren el mismo registro, gana el que esté más abajo en la lista (como el propio orden de carga de Mod Organizer).",
+    "noArtWarning": "Desmarcar un mod elimina su intercambio para un registro del que AutoSeasons no tiene arte estacional propio - NO recurre a mantener el intercambio de ese mod.",
+    "scanButton": "Analizar",
+    "legend": "Marcado = mantener la cobertura propia de este mod   |   Desmarcado = sobrescribirla con la textura propia de AutoSeasons   |   Posición = orden de prioridad (el de abajo gana)",
+    "moveUp": "Subir",
+    "moveDown": "Bajar",
+    "scanError": "No se pudo analizar: ",
+    "noModsFound": "No se detectaron mods estacionales externos bajo Data/Seasons."
   },
   "progress": {
     "starting": "Iniciando...",
@@ -62,7 +92,11 @@
     "failedClose": "Fallo - Cerrar",
     "completion": {
       "title": "AutoSeasons",
-      "message": "Generación completada. No olvides activar AutoSeasons.esp en la lista de plugins de tu gestor de mods si aún no está activo."
+      "message": "Generación completada - se creó/crearon %zu registro(s) estacional(es) (%s). No olvides activar AutoSeasons.esp en la lista de plugins de tu gestor de mods si aún no está activo.",
+      "zeroMessage": "Generación completada, pero no se creó ningún registro estacional (0). Revisa la ubicación de tu juego y los ajustes de lista de exclusión/palabras clave - esto suele significar que AutoSeasons no encontró el orden de carga esperado.",
+      "dryRunMessage": "Vista previa completada - se crearía(n) %zu registro(s) estacional(es) (%s). No se escribió nada en el disco.",
+      "zeroDryRunMessage": "Vista previa completada, pero no se crearía ningún registro estacional (0). Revisa la ubicación de tu juego y los ajustes de lista de exclusión/palabras clave - esto suele significar que AutoSeasons no encontró el orden de carga esperado.",
+      "conflictsSuffix": "\n\n%zu combinación(es) de registro/estación están cubiertas por varios mods externos sin prioridad definida entre ellos - consulta el registro, o abre \"Gestionar conflictos de mods estacionales\" en el lanzador para decidir cuál debe ganar."
     }
   }
 }

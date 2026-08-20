@@ -3,6 +3,7 @@
   "common": {
     "browse": "Parcourir",
     "cancel": "Annuler",
+    "ok": "OK",
     "add": "Ajouter",
     "remove": "Supprimer"
   },
@@ -21,9 +22,18 @@
       "dark": "Sombre"
     },
     "intro": "Analyse votre ordre de chargement à la recherche de variantes de textures saisonnières (ex. rock01_AUT.dds à côté de rock01.dds) et génère le plugin ainsi que les fichiers Data/Seasons/*.ini pour le plugin SKSE Seasons of Skyrim.",
+    "configProfile": {
+      "label": "Profil de configuration",
+      "load": "Charger une config...",
+      "saveAs": "Enregistrer la config sous...",
+      "loadDialogTitle": "Charger une config",
+      "saveDialogTitle": "Enregistrer la config sous",
+      "fileFilter": "Fichiers JSON (*.json)|*.json|Tous les fichiers (*.*)|*.*"
+    },
     "gameLocation": {
       "label": "Emplacement du jeu",
-      "dialogTitle": "Sélectionner l'emplacement du jeu"
+      "dialogTitle": "Sélectionner l'emplacement du jeu",
+      "mo2Warning": "Si vous utilisez Mod Organizer 2 ou Vortex, lancez AutoSeasons depuis sa liste d'outils/son tableau de bord, et non en double-cliquant sur l'exe dans l'Explorateur - sinon il ne verra que votre vrai dossier Data, pas vos mods installés, et produira silencieusement un résultat incomplet."
     },
     "gameType": {
       "label": "Type de jeu"
@@ -42,6 +52,15 @@
       "help": "Les records dont l'EditorID contient un de ces mots (insensible à la casse) sont entièrement exclus de la variation saisonnière - utile pour les noms qui indiquent déjà une saison/un biome figé, ex. \"Coast\" ou \"River\". Clic droit pour ajouter/retirer une ligne.",
       "column": "Mot-clé"
     },
+    "seasonModOverrides": {
+      "button": "Gérer les conflits de mods saisonniers..."
+    },
+    "removeGrassInWinter": {
+      "label": "Retirer l'herbe en hiver si aucune variante hivernale n'existe"
+    },
+    "dryRun": {
+      "label": "Aperçu uniquement (dry run) - analyse et journalise ce qui se passerait, sans rien écrire"
+    },
     "startButton": "Lancer le patch",
     "missingGameLocation": {
       "title": "Emplacement du jeu manquant",
@@ -51,6 +70,17 @@
       "title": "Emplacement de sortie manquant",
       "message": "Veuillez sélectionner un emplacement de sortie."
     }
+  },
+  "seasonModOverrides": {
+    "title": "Conflits de mods saisonniers",
+    "intro": "AutoSeasons s'efface normalement devant le propre fichier ini Data/Seasons d'un autre mod dès qu'il couvre déjà un record pour une saison - chaque mod ci-dessous démarre coché (respecté). Décochez un mod pour qu'AutoSeasons l'écrase à la place : il génère alors sa propre texture saisonnière partout où il en a l'art, en abandonnant entièrement la déclaration de ce mod. Quand deux mods respectés couvrent tous les deux le même record, celui le plus bas dans la liste l'emporte (comme l'ordre de chargement de Mod Organizer).",
+    "noArtWarning": "Décocher un mod retire son swap pour un record dont AutoSeasons n'a aucun art saisonnier propre - il ne revient PAS à garder le swap de ce mod.",
+    "scanButton": "Analyser",
+    "legend": "Coché = conserver la couverture propre à ce mod   |   Décoché = l'écraser avec la propre texture d'AutoSeasons   |   Position = ordre de priorité (le bas l'emporte)",
+    "moveUp": "Monter",
+    "moveDown": "Descendre",
+    "scanError": "Impossible d'analyser : ",
+    "noModsFound": "Aucun mod saisonnier étranger détecté sous Data/Seasons."
   },
   "progress": {
     "starting": "Démarrage...",
@@ -62,7 +92,11 @@
     "failedClose": "Échec - Fermer",
     "completion": {
       "title": "AutoSeasons",
-      "message": "Génération terminée. N'oubliez pas d'activer AutoSeasons.esp dans la liste des plugins de votre gestionnaire de mods s'il ne l'est pas déjà."
+      "message": "Génération terminée - %zu enregistrement(s) saisonnier(s) créé(s) (%s). N'oubliez pas d'activer AutoSeasons.esp dans la liste des plugins de votre gestionnaire de mods s'il ne l'est pas déjà.",
+      "zeroMessage": "Génération terminée, mais 0 enregistrement saisonnier n'a été créé. Vérifiez votre emplacement de jeu ainsi que les paramètres de liste d'exclusion/mots-clés - cela signifie généralement qu'AutoSeasons n'a pas trouvé l'ordre de chargement attendu.",
+      "dryRunMessage": "Aperçu terminé - %zu enregistrement(s) saisonnier(s) seraient créés (%s). Rien n'a été écrit sur le disque.",
+      "zeroDryRunMessage": "Aperçu terminé, mais 0 enregistrement saisonnier ne serait créé. Vérifiez votre emplacement de jeu ainsi que les paramètres de liste d'exclusion/mots-clés - cela signifie généralement qu'AutoSeasons n'a pas trouvé l'ordre de chargement attendu.",
+      "conflictsSuffix": "\n\n%zu combinaison(s) enregistrement/saison sont couvertes par plusieurs mods étrangers sans priorité définie entre eux - consultez le journal, ou ouvrez \"Gérer les conflits de mods saisonniers\" dans le lanceur pour choisir lequel doit l'emporter."
     }
   }
 }

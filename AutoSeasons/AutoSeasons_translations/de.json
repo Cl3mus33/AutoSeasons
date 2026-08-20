@@ -3,6 +3,7 @@
   "common": {
     "browse": "Durchsuchen",
     "cancel": "Abbrechen",
+    "ok": "OK",
     "add": "Hinzufügen",
     "remove": "Entfernen"
   },
@@ -21,9 +22,18 @@
       "dark": "Dunkel"
     },
     "intro": "Durchsucht deine Ladereihenfolge nach saisonalen Textur-Varianten (z. B. rock01_AUT.dds neben rock01.dds) und erstellt das Plugin sowie die Data/Seasons/*.ini-Dateien für das Seasons of Skyrim SKSE-Plugin.",
+    "configProfile": {
+      "label": "Konfigurationsprofil",
+      "load": "Konfiguration laden...",
+      "saveAs": "Konfiguration speichern unter...",
+      "loadDialogTitle": "Konfiguration laden",
+      "saveDialogTitle": "Konfiguration speichern unter",
+      "fileFilter": "JSON-Dateien (*.json)|*.json|Alle Dateien (*.*)|*.*"
+    },
     "gameLocation": {
       "label": "Spielverzeichnis",
-      "dialogTitle": "Spielverzeichnis auswählen"
+      "dialogTitle": "Spielverzeichnis auswählen",
+      "mo2Warning": "Wenn du Mod Organizer 2 oder Vortex verwendest, starte AutoSeasons über dessen Tool-Liste/Dashboard und nicht per Doppelklick auf die exe im Explorer - sonst sieht es nur dein echtes Data-Verzeichnis, nicht deine installierten Mods, und erzeugt stillschweigend ein unvollständiges Ergebnis."
     },
     "gameType": {
       "label": "Spieltyp"
@@ -42,6 +52,15 @@
       "help": "Datensätze, deren EditorID eines dieser Wörter enthält (Groß-/Kleinschreibung wird ignoriert), werden vollständig von der saisonalen Variation ausgeschlossen - nützlich für Namen, die bereits eine feste Jahreszeit/Biom anzeigen, z. B. \"Coast\" oder \"River\". Rechtsklick zum Hinzufügen/Entfernen von Zeilen.",
       "column": "Schlüsselwort"
     },
+    "seasonModOverrides": {
+      "button": "Saisonale Mod-Konflikte verwalten..."
+    },
+    "removeGrassInWinter": {
+      "label": "Gras im Winter entfernen, wenn keine Wintervariante existiert"
+    },
+    "dryRun": {
+      "label": "Nur Vorschau (Trockenlauf) - analysiert und protokolliert, was passieren würde, ohne etwas zu schreiben"
+    },
     "startButton": "Patchen starten",
     "missingGameLocation": {
       "title": "Spielverzeichnis fehlt",
@@ -51,6 +70,17 @@
       "title": "Ausgabeverzeichnis fehlt",
       "message": "Bitte wähle ein Ausgabeverzeichnis aus."
     }
+  },
+  "seasonModOverrides": {
+    "title": "Saisonale Mod-Konflikte",
+    "intro": "AutoSeasons überlässt einem anderen Mod normalerweise dessen eigene Data/Seasons-ini, sobald diese bereits einen Datensatz für eine Jahreszeit abdeckt - jeder Mod unten startet angehakt (respektiert). Hake einen Mod ab, damit AutoSeasons ihn stattdessen überschreibt: Es erzeugt dann überall dort, wo es passendes Material hat, seine eigene saisonale Textur und verwirft die Angabe dieses Mods vollständig. Wenn zwei respektierte Mods denselben Datensatz abdecken, gewinnt der weiter unten in der Liste (wie bei Mod Organizers eigener Ladereihenfolge).",
+    "noArtWarning": "Das Abhaken eines Mods entfernt dessen Austausch für einen Datensatz, für den AutoSeasons kein eigenes saisonales Material hat - es fällt NICHT auf den Austausch dieses Mods zurück.",
+    "scanButton": "Scannen",
+    "legend": "Angehakt = eigene Abdeckung dieses Mods beibehalten   |   Nicht angehakt = mit AutoSeasons' eigener Textur überschreiben   |   Position = Prioritätsreihenfolge (unten gewinnt)",
+    "moveUp": "Nach oben",
+    "moveDown": "Nach unten",
+    "scanError": "Scan nicht möglich: ",
+    "noModsFound": "Keine fremden saisonalen Mods unter Data/Seasons gefunden."
   },
   "progress": {
     "starting": "Wird gestartet...",
@@ -62,7 +92,11 @@
     "failedClose": "Fehlgeschlagen - Schließen",
     "completion": {
       "title": "AutoSeasons",
-      "message": "Generierung abgeschlossen. Vergiss nicht, AutoSeasons.esp in der Plugin-Liste deines Mod-Managers zu aktivieren, falls es noch nicht aktiv ist."
+      "message": "Generierung abgeschlossen - %zu saisonale(r) Datensatz/Datensätze erstellt (%s). Vergiss nicht, AutoSeasons.esp in der Plugin-Liste deines Mod-Managers zu aktivieren, falls es noch nicht aktiv ist.",
+      "zeroMessage": "Generierung abgeschlossen, aber es wurden 0 saisonale Datensätze erstellt. Überprüfe dein Spielverzeichnis sowie die Sperrlisten-/Schlüsselwort-Einstellungen - das bedeutet meist, dass AutoSeasons nicht die erwartete Ladereihenfolge gefunden hat.",
+      "dryRunMessage": "Vorschau abgeschlossen - %zu saisonale(r) Datensatz/Datensätze würden erstellt (%s). Es wurde nichts auf die Festplatte geschrieben.",
+      "zeroDryRunMessage": "Vorschau abgeschlossen, aber es würden 0 saisonale Datensätze erstellt. Überprüfe dein Spielverzeichnis sowie die Sperrlisten-/Schlüsselwort-Einstellungen - das bedeutet meist, dass AutoSeasons nicht die erwartete Ladereihenfolge gefunden hat.",
+      "conflictsSuffix": "\n\n%zu Datensatz/Jahreszeit-Kombination(en) werden von mehreren fremden Mods abgedeckt, ohne dass eine Priorität zwischen ihnen festgelegt wurde - sieh im Protokoll nach oder öffne \"Saisonale Mod-Konflikte verwalten\" im Launcher, um zu entscheiden, welcher gewinnen soll."
     }
   }
 }
