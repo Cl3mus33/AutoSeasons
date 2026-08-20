@@ -39,17 +39,6 @@ auto PGGlobals::getPGD3D() -> PGD3D*
 auto PGGlobals::isPGD3DSet() -> bool { return s_PGD3D != nullptr; }
 void PGGlobals::setPGD3D(PGD3D* pgd3d) { s_PGD3D = pgd3d; }
 
-PGModManager* PGGlobals::s_PGMM = nullptr;
-auto PGGlobals::getPGMM() -> PGModManager*
-{
-    if (!isPGMMSet()) {
-        throw std::runtime_error("PGMM is not set");
-    }
-    return s_PGMM;
-}
-auto PGGlobals::isPGMMSet() -> bool { return s_PGMM != nullptr; }
-void PGGlobals::setPGMM(PGModManager* pgmm) { s_PGMM = pgmm; }
-
 auto PGGlobals::getFileSaver() -> TaskQueue&
 {
     static TaskQueue fileSaver;

@@ -27,8 +27,6 @@
 #include <vector>
 #include <winnt.h>
 
-class PGModManager;
-
 /**
  * @brief Extends BethesdaDirectory to manage NIF mesh and DDS texture file mapping for a Bethesda game load order.
  *

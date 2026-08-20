@@ -120,8 +120,6 @@ public:
      *
      * @param dataPath Data path
      * @param generatedPath Generated path
-     * @param pgmm PGModManager object
-     * @param logging Whether to enable CLI logging
      */
     BethesdaDirectory(std::filesystem::path dataPath,
                       std::unordered_set<std::filesystem::path> foldersToMap,
