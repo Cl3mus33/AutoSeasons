@@ -31,6 +31,7 @@ constexpr size_t NUM_PLUGIN_TEXTURE_SLOTS = 8;
 constexpr size_t DIFFUSE_SLOT = 0;
 constexpr size_t NORMAL_SLOT = 1;
 constexpr size_t PARALLAX_SLOT = 3;
+constexpr size_t ENVMASK_SLOT = 5; ///< PBR RMAOS (roughness/metalness/AO) slot - "slot6" in PBRNifPatcher rule JSON.
 
 // A single NIF shape's texture set plus the identity (index + name) needed to author a matching
 // plugin AlternateTextures entry: shape order in GetShapes() is the same order the game uses for
@@ -997,9 +998,29 @@ auto SeasonPatcher::buildSeasonalSlots(PGDirectory* pgd,
         // the ESP still shows the vanilla-style reference (a different, non-PBR-aware mod placed
         // this instance) - fall back to the matched rule's own slot content, PGPatcher's own
         // record of the real PBR file paths for this texture.
-        const auto pbrBaseSlots = isAlreadyPBRPath ? baseSlots : slotsFromPBRRule(*matchedRule, baseSlots.at(DIFFUSE_SLOT));
+        auto pbrBaseSlots = isAlreadyPBRPath ? baseSlots : slotsFromPBRRule(*matchedRule, baseSlots.at(DIFFUSE_SLOT));
         if (pbrBaseSlots.at(DIFFUSE_SLOT).empty()) {
             return nullopt; // couldn't resolve a real PBR diffuse path at all - nothing to seasonalize
+        }
+
+        // Some mods' own PBRNifPatcher rules only wire up a subset of slots for a given texture
+        // name - e.g. shipping normal/RMAOS files for every variant but only listing "slot2"/
+        // "slot6" in some of the rule entries, leaving others (often the plain, non-seasonal base
+        // name) to fall back to nothing even though the exact same files exist right next to the
+        // ones that ARE listed. Before accepting an empty slot here, try the standard PBR filename
+        // convention (base stem + "_n"/"_rmaos") and use it if that file genuinely exists on disk -
+        // a real, present file should never be lost to a rule-authoring gap in someone else's mod.
+        static const unordered_map<size_t, wstring> conventionalPBRSuffixes { { NORMAL_SLOT, L"_n" }, { ENVMASK_SLOT, L"_rmaos" } };
+        for (const auto& [slotIndex, suffix] : conventionalPBRSuffixes) {
+            if (!pbrBaseSlots.at(slotIndex).empty()) {
+                continue; // the rule already provided this slot - trust it over a guess
+            }
+            const filesystem::path diffusePath(pbrBaseSlots.at(DIFFUSE_SLOT));
+            const auto candidate
+                = diffusePath.parent_path() / (diffusePath.stem().wstring() + suffix + diffusePath.extension().wstring());
+            if (pgd->isFile(candidate)) {
+                pbrBaseSlots.at(slotIndex) = candidate.wstring();
+            }
         }
 
         // Write the complete seasonal texture set directly here: every populated slot (diffuse,
