@@ -59,7 +59,18 @@ auto getAllShapeSlotsFromMesh(PGDirectory* pgd, const std::filesystem::path& mes
         return {};
     }
 
-    nifly::NifFile nif = PGNIFUtil::loadNIFFromBytes(pgd->getFile(meshPath), false);
+    nifly::NifFile nif;
+    try {
+        // isFile() above only proves the mesh EXISTS in the merged view - a 0-byte file (a broken
+        // install, a bad PBR-conversion output, etc.) still passes that check and then throws here.
+        // Caught the same way PGDirectory::mapTexturesFromNIF() already does for its own NIF load,
+        // rather than letting one bad mesh abort the entire generation run.
+        nif = PGNIFUtil::loadNIFFromBytes(pgd->getFile(meshPath), false);
+    } catch (const exception& e) {
+        Logger::warn(L"Could not read mesh {} ({}) - skipping its own embedded texture set", meshPath.wstring(),
+            StringUtil::utf8toUTF16(e.what()));
+        return {};
+    }
     const auto shapes = nif.GetShapes();
 
     vector<ShapeTextureInfo> result;
