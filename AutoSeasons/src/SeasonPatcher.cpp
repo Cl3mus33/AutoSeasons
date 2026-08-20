@@ -1678,7 +1678,13 @@ auto SeasonPatcher::run(PGDirectory* pgd, const std::vector<std::wstring>& meshB
                 }
             }
 
-            if (anyParallaxFound.empty() && !seasonResult->slots.at(PARALLAX_SLOT).empty()) {
+            // Vanilla-only: PBR terrain's own parallax/displacement slot must never trigger this -
+            // TerrainHelper's LandscapeDefault unlock exists purely for the old vanilla-parallax
+            // hack and, per ensureDefaultPBRLand()'s own doc comment, "has nothing to do with PBR
+            // terrain". Without this check, a PBR-heavy load order made TerrainHelper.esp an
+            // unnecessary master of the output plugin the moment ANY PBR LTEX had its own native
+            // displacement map - which is the normal case for PBR terrain, not an edge case.
+            if (!seasonResult->isPBR && anyParallaxFound.empty() && !seasonResult->slots.at(PARALLAX_SLOT).empty()) {
                 anyParallaxFound = seasonResult->slots.at(PARALLAX_SLOT);
             }
 
