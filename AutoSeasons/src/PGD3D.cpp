@@ -284,6 +284,9 @@ auto PGD3D::initGPU() -> bool
                            &m_ptrContext // Sets the instance device immediate context
     );
 
+    if (FAILED(hr)) {
+        Logger::error(L"Failed to create the GPU device: {}", getHRESULTErrorMessage(hr));
+    }
     return !FAILED(hr);
 }
 
@@ -323,6 +326,17 @@ auto PGD3D::initShader(const std::filesystem::path& filename,
                             shaderBlob.ReleaseAndGetAddressOf(),
                             ptrErrorBlob.ReleaseAndGetAddressOf());
     if (FAILED(hr)) {
+        // ptrErrorBlob holds the HLSL compiler's own diagnostic text when the file was found but
+        // failed to compile; it's null when D3DCompileFromFile couldn't even open the file (e.g.
+        // AutoSeasons_cshaders/ missing next to the exe) or D3DCompiler_47.dll itself couldn't be
+        // loaded (missing on some minimal Windows installs) - report whichever is available so a
+        // real bug report actually says why, instead of just "failed".
+        if (ptrErrorBlob != nullptr) {
+            const string errorText(static_cast<const char*>(ptrErrorBlob->GetBufferPointer()), ptrErrorBlob->GetBufferSize());
+            Logger::error(L"Failed to compile shader \"{}\": {}", shaderAbsPath.wstring(), utf8toUTF16(errorText));
+        } else {
+            Logger::error(L"Failed to compile shader \"{}\": {}", shaderAbsPath.wstring(), getHRESULTErrorMessage(hr));
+        }
         return false;
     }
 
@@ -331,6 +345,9 @@ auto PGD3D::initShader(const std::filesystem::path& filename,
         const std::scoped_lock lock(m_d3dMutex);
         hr = m_ptrDevice->CreateComputeShader(
             shaderBlob->GetBufferPointer(), shaderBlob->GetBufferSize(), nullptr, outShader.ReleaseAndGetAddressOf());
+    }
+    if (FAILED(hr)) {
+        Logger::error(L"Failed to create compute shader \"{}\" on the GPU: {}", shaderAbsPath.wstring(), getHRESULTErrorMessage(hr));
     }
     return !FAILED(hr);
 }
