@@ -5,6 +5,15 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-08-25
+
+### Fixed
+- GPU device creation and internal compute shader initialization now log the actual underlying
+  error (HRESULT message, or the HLSL compiler's own diagnostic text) instead of just failing with
+  a generic "Failed to initialize internal shaders"/"Failed to initialize GPU" message and no way
+  to tell why - the log now shows whether it's e.g. a missing `d3dcompiler_47.dll`, a missing
+  `AutoSeasons_cshaders` folder, or a genuine driver incompatibility.
+
 ## [1.1.0] - 2026-08-20
 
 ### Fixed
