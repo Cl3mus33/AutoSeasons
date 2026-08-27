@@ -5,6 +5,13 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-27
+
+### Added
+- "Move to Top" / "Move to Bottom" buttons in the "Manage Season Mod Conflicts" list, alongside the
+  existing Move Up/Down - reordering across a load order with 50+ foreign seasonal mods no longer
+  takes dozens of individual clicks to reach either end.
+
 ## [1.1.2] - 2026-08-25
 
 ### Fixed

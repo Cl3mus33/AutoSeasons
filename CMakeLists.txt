@@ -35,7 +35,7 @@ add_compile_definitions(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
 add_compile_definitions(_WIN32_WINNT=0x0A00)
 add_compile_definitions(UNICODE _UNICODE)
 
-project(${PROJECT_NAME} VERSION 1.1.2)
+project(${PROJECT_NAME} VERSION 1.2.0)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
