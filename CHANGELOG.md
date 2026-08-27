@@ -5,6 +5,15 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-08-25
+
+### Fixed
+- A foreign `Data/Seasons` ini saved with a UTF-8 byte-order mark had its whole content silently
+  discarded - the BOM shifted the first line's leading `[` by 3 bytes, so the very first section
+  header was never recognized, and every entry after it (having no recognized section to belong
+  to) was skipped. The mod never appeared in "Manage Season Mod Conflicts" and its own coverage was
+  never respected, indistinguishable from the ini not existing at all.
+
 ## [1.1.1] - 2026-08-25
 
 ### Fixed
