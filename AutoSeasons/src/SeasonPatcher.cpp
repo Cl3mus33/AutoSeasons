@@ -853,6 +853,20 @@ auto loadForeignSeasonCoverage(const filesystem::path& seasonsDir) -> ForeignSea
             continue;
         }
 
+        // Skip a UTF-8 BOM if present - some mod authors' editors save ini files with one. Left
+        // in place, it prepends 3 bytes to the very first line, so that line's leading '[' check
+        // below never matches - silently discarding every entry in files where the BOM'd line is
+        // the file's only (or first) section header, exactly as if the file were empty.
+        constexpr array<unsigned char, 3> UTF8_BOM { 0xEF, 0xBB, 0xBF };
+        array<char, 3> maybeBom {};
+        file.read(maybeBom.data(), 3);
+        if (file.gcount() != 3 || static_cast<unsigned char>(maybeBom[0]) != UTF8_BOM.at(0)
+            || static_cast<unsigned char>(maybeBom[1]) != UTF8_BOM.at(1)
+            || static_cast<unsigned char>(maybeBom[2]) != UTF8_BOM.at(2)) {
+            file.clear();
+            file.seekg(0);
+        }
+
         coverage.foreignIniFilenames.push_back(dirEntry.path().filename());
 
         string currentRecordType;
