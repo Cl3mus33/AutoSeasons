@@ -75,8 +75,10 @@ LauncherWindow::LauncherWindow(const ASParams& initParams, filesystem::path exeP
         ASTr("launcher.intro",
             "Scans your load order for seasonal texture variants (e.g. rock01_AUT.dds next to "
             "rock01.dds) and generates the plugin + Data/Seasons/*.ini files for the Seasons of "
-            "Skyrim SKSE plugin."));
-    introText->Wrap(490);
+            "Skyrim SKSE plugin. Run this before PGPatcher, not after - it authors the PBR rules "
+            "and plugin duplicates PGPatcher needs to see downstream, so running PGPatcher first "
+            "means it won't pick up any of AutoSeasons' seasonal variants."));
+    introText->Wrap(530);
     generalSizer->Add(introText, 0, wxALL, BORDER_SIZE * 2);
 
     // Config profile - a single install (e.g. shared outside any one modlist) can still keep

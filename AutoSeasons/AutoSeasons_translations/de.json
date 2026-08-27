@@ -21,7 +21,7 @@
       "light": "Hell",
       "dark": "Dunkel"
     },
-    "intro": "Durchsucht deine Ladereihenfolge nach saisonalen Textur-Varianten (z. B. rock01_AUT.dds neben rock01.dds) und erstellt das Plugin sowie die Data/Seasons/*.ini-Dateien für das Seasons of Skyrim SKSE-Plugin.",
+    "intro": "Durchsucht deine Ladereihenfolge nach saisonalen Textur-Varianten (z. B. rock01_AUT.dds neben rock01.dds) und erstellt das Plugin sowie die Data/Seasons/*.ini-Dateien für das Seasons of Skyrim SKSE-Plugin. Führe dies vor PGPatcher aus, nicht danach - es erstellt die PBR-Regeln und Plugin-Duplikate, die PGPatcher anschließend sehen muss; wird PGPatcher zuerst ausgeführt, berücksichtigt es keine der saisonalen Varianten von AutoSeasons.",
     "configProfile": {
       "label": "Konfigurationsprofil",
       "load": "Konfiguration laden...",

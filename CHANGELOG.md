@@ -5,6 +5,11 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+- The launcher's intro text now tells users to run AutoSeasons before PGPatcher, not after -
+  reinforcing the already-documented correct order directly in the app, matching AutoBlend's own
+  equivalent PG Patcher reminder.
+
 ## [1.2.0] - 2026-08-27
 
 ### Added
