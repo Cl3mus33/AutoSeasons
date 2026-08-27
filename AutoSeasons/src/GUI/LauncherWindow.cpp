@@ -75,9 +75,10 @@ LauncherWindow::LauncherWindow(const ASParams& initParams, filesystem::path exeP
         ASTr("launcher.intro",
             "Scans your load order for seasonal texture variants (e.g. rock01_AUT.dds next to "
             "rock01.dds) and generates the plugin + Data/Seasons/*.ini files for the Seasons of "
-            "Skyrim SKSE plugin. Run this before PGPatcher, not after - it authors the PBR rules "
-            "and plugin duplicates PGPatcher needs to see downstream, so running PGPatcher first "
-            "means it won't pick up any of AutoSeasons' seasonal variants."));
+            "Skyrim SKSE plugin. Run this before PGPatcher, not after - PGPatcher is what converts "
+            "meshes to PBR/Complex Material afterward, including AutoSeasons' own seasonal "
+            "duplicates, so running it first means it won't act on anything AutoSeasons just "
+            "generated."));
     introText->Wrap(530);
     generalSizer->Add(introText, 0, wxALL, BORDER_SIZE * 2);
 

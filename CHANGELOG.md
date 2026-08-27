@@ -5,6 +5,13 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-08-27
+
+### Changed
+- Generalized the intro text's PGPatcher reminder (added in 1.2.1) to cover Complex Material, not
+  just PBR - PGPatcher converts meshes to either downstream, and AutoSeasons' seasonal duplicates
+  need to already exist for either conversion to act on them.
+
 ## [1.2.1] - 2026-08-27
 
 ### Changed

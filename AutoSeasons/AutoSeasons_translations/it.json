@@ -21,7 +21,7 @@
       "light": "Chiaro",
       "dark": "Scuro"
     },
-    "intro": "Analizza il tuo ordine di caricamento alla ricerca di varianti di texture stagionali (es. rock01_AUT.dds accanto a rock01.dds) e genera il plugin più i file Data/Seasons/*.ini per il plugin SKSE Seasons of Skyrim. Esegui questo strumento prima di PGPatcher, non dopo - genera le regole PBR e i duplicati di plugin che PGPatcher deve poi vedere, quindi eseguire prima PGPatcher significa che non terrà conto di nessuna variante stagionale di AutoSeasons.",
+    "intro": "Analizza il tuo ordine di caricamento alla ricerca di varianti di texture stagionali (es. rock01_AUT.dds accanto a rock01.dds) e genera il plugin più i file Data/Seasons/*.ini per il plugin SKSE Seasons of Skyrim. Esegui questo strumento prima di PGPatcher, non dopo - è PGPatcher a convertire successivamente le mesh in PBR/Complex Material, inclusi i duplicati stagionali propri di AutoSeasons, quindi eseguirlo per primo significa che non agirà su nulla di ciò che AutoSeasons ha appena generato.",
     "configProfile": {
       "label": "Profilo di configurazione",
       "load": "Carica configurazione...",
