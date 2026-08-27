@@ -79,6 +79,8 @@
     "legend": "Coché = conserver la couverture propre à ce mod   |   Décoché = l'écraser avec la propre texture d'AutoSeasons   |   Position = ordre de priorité (le bas l'emporte)",
     "moveUp": "Monter",
     "moveDown": "Descendre",
+    "moveTop": "Envoyer en haut",
+    "moveBottom": "Envoyer en bas",
     "scanError": "Impossible d'analyser : ",
     "noModsFound": "Aucun mod saisonnier étranger détecté sous Data/Seasons."
   },

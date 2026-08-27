@@ -79,6 +79,8 @@
     "legend": "Marcado = mantener la cobertura propia de este mod   |   Desmarcado = sobrescribirla con la textura propia de AutoSeasons   |   Posición = orden de prioridad (el de abajo gana)",
     "moveUp": "Subir",
     "moveDown": "Bajar",
+    "moveTop": "Enviar arriba del todo",
+    "moveBottom": "Enviar abajo del todo",
     "scanError": "No se pudo analizar: ",
     "noModsFound": "No se detectaron mods estacionales externos bajo Data/Seasons."
   },

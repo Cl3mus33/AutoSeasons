@@ -74,13 +74,22 @@ SeasonModOverrideDialog::SeasonModOverrideDialog(wxWindow* parent, filesystem::p
     m_modList = new wxCheckListBox(this, wxID_ANY);
     modListSizer->Add(m_modList, 1, wxEXPAND);
 
+    // "To Top"/"To Bottom" sit outside the Up/Down pair (with a visual gap between them) since a
+    // real load order can have 50+ entries - reaching either end one row at a time via Up/Down
+    // alone doesn't scale.
     auto* moveButtonSizer = new wxBoxSizer(wxVERTICAL);
+    m_moveTopButton = new wxButton(this, wxID_ANY, ASTr("seasonModOverrides.moveTop", "Move to Top"));
+    m_moveTopButton->Bind(wxEVT_BUTTON, &SeasonModOverrideDialog::onMoveTopPressed, this);
     m_moveUpButton = new wxButton(this, wxID_ANY, ASTr("seasonModOverrides.moveUp", "Move Up"));
     m_moveUpButton->Bind(wxEVT_BUTTON, &SeasonModOverrideDialog::onMoveUpPressed, this);
     m_moveDownButton = new wxButton(this, wxID_ANY, ASTr("seasonModOverrides.moveDown", "Move Down"));
     m_moveDownButton->Bind(wxEVT_BUTTON, &SeasonModOverrideDialog::onMoveDownPressed, this);
-    moveButtonSizer->Add(m_moveUpButton, 0, wxBOTTOM | wxLEFT, BORDER_SIZE);
-    moveButtonSizer->Add(m_moveDownButton, 0, wxLEFT, BORDER_SIZE);
+    m_moveBottomButton = new wxButton(this, wxID_ANY, ASTr("seasonModOverrides.moveBottom", "Move to Bottom"));
+    m_moveBottomButton->Bind(wxEVT_BUTTON, &SeasonModOverrideDialog::onMoveBottomPressed, this);
+    moveButtonSizer->Add(m_moveTopButton, 0, wxBOTTOM | wxLEFT, BORDER_SIZE);
+    moveButtonSizer->Add(m_moveUpButton, 0, wxBOTTOM | wxLEFT, BORDER_SIZE * 2);
+    moveButtonSizer->Add(m_moveDownButton, 0, wxBOTTOM | wxLEFT, BORDER_SIZE * 2);
+    moveButtonSizer->Add(m_moveBottomButton, 0, wxLEFT, BORDER_SIZE);
     modListSizer->Add(moveButtonSizer, 0, wxALIGN_TOP);
 
     mainSizer->Add(modListSizer, 1, wxEXPAND | wxLEFT | wxRIGHT, BORDER_SIZE * 2);
@@ -157,21 +166,38 @@ void SeasonModOverrideDialog::onScanButtonPressed([[maybe_unused]] wxCommandEven
     runScan();
 }
 
+void SeasonModOverrideDialog::moveSelectedTo(unsigned int newIndex)
+{
+    const int sel = m_modList->GetSelection();
+    if (sel == wxNOT_FOUND) {
+        return;
+    }
+    const auto idx = static_cast<unsigned int>(sel);
+    if (idx == newIndex || newIndex >= m_modList->GetCount()) {
+        return;
+    }
+
+    const wxString text = m_modList->GetString(idx);
+    const bool checked = m_modList->IsChecked(idx);
+    m_modList->Delete(idx);
+    m_modList->Insert(text, newIndex);
+    m_modList->Check(newIndex, checked);
+    m_modList->SetSelection(static_cast<int>(newIndex));
+
+    const auto name = m_modNames.at(idx);
+    m_modNames.erase(m_modNames.begin() + idx);
+    m_modNames.insert(m_modNames.begin() + newIndex, name);
+
+    m_priorityOrderChanged = true;
+}
+
 void SeasonModOverrideDialog::onMoveUpPressed([[maybe_unused]] wxCommandEvent& event)
 {
     const int sel = m_modList->GetSelection();
     if (sel == wxNOT_FOUND || sel == 0) {
         return;
     }
-    const auto idx = static_cast<unsigned int>(sel);
-    const wxString text = m_modList->GetString(idx);
-    const bool checked = m_modList->IsChecked(idx);
-    m_modList->Delete(idx);
-    m_modList->Insert(text, idx - 1);
-    m_modList->Check(idx - 1, checked);
-    m_modList->SetSelection(static_cast<int>(idx - 1));
-    std::swap(m_modNames.at(idx), m_modNames.at(idx - 1));
-    m_priorityOrderChanged = true;
+    moveSelectedTo(static_cast<unsigned int>(sel) - 1);
 }
 
 void SeasonModOverrideDialog::onMoveDownPressed([[maybe_unused]] wxCommandEvent& event)
@@ -180,15 +206,20 @@ void SeasonModOverrideDialog::onMoveDownPressed([[maybe_unused]] wxCommandEvent&
     if (sel == wxNOT_FOUND || static_cast<unsigned int>(sel) + 1 >= m_modList->GetCount()) {
         return;
     }
-    const auto idx = static_cast<unsigned int>(sel);
-    const wxString text = m_modList->GetString(idx);
-    const bool checked = m_modList->IsChecked(idx);
-    m_modList->Delete(idx);
-    m_modList->Insert(text, idx + 1);
-    m_modList->Check(idx + 1, checked);
-    m_modList->SetSelection(static_cast<int>(idx + 1));
-    std::swap(m_modNames.at(idx), m_modNames.at(idx + 1));
-    m_priorityOrderChanged = true;
+    moveSelectedTo(static_cast<unsigned int>(sel) + 1);
+}
+
+void SeasonModOverrideDialog::onMoveTopPressed([[maybe_unused]] wxCommandEvent& event)
+{
+    moveSelectedTo(0);
+}
+
+void SeasonModOverrideDialog::onMoveBottomPressed([[maybe_unused]] wxCommandEvent& event)
+{
+    if (m_modList->GetCount() == 0) {
+        return;
+    }
+    moveSelectedTo(m_modList->GetCount() - 1);
 }
 
 auto SeasonModOverrideDialog::getSelectedOverrides() const -> std::vector<std::wstring>

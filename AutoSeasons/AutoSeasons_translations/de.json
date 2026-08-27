@@ -79,6 +79,8 @@
     "legend": "Angehakt = eigene Abdeckung dieses Mods beibehalten   |   Nicht angehakt = mit AutoSeasons' eigener Textur überschreiben   |   Position = Prioritätsreihenfolge (unten gewinnt)",
     "moveUp": "Nach oben",
     "moveDown": "Nach unten",
+    "moveTop": "An den Anfang",
+    "moveBottom": "An das Ende",
     "scanError": "Scan nicht möglich: ",
     "noModsFound": "Keine fremden saisonalen Mods unter Data/Seasons gefunden."
   },

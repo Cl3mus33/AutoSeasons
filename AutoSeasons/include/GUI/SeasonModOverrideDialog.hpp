@@ -64,11 +64,19 @@ private:
     wxCheckListBox* m_modList;
     wxButton* m_moveUpButton;
     wxButton* m_moveDownButton;
+    wxButton* m_moveTopButton;
+    wxButton* m_moveBottomButton;
     wxStaticText* m_statusText;
 
     void runScan();
+    /// @brief Moves the currently selected row to newIndex, keeping its checked state and
+    /// selection, and updates m_modNames/m_priorityOrderChanged to match - shared by all four
+    /// move handlers below so each one is just "compute newIndex, call this."
+    void moveSelectedTo(unsigned int newIndex);
 
     void onScanButtonPressed(wxCommandEvent& event);
     void onMoveUpPressed(wxCommandEvent& event);
     void onMoveDownPressed(wxCommandEvent& event);
+    void onMoveTopPressed(wxCommandEvent& event);
+    void onMoveBottomPressed(wxCommandEvent& event);
 };

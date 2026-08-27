@@ -79,6 +79,8 @@
     "legend": "Checked = keep this mod's own coverage   |   Unchecked = overwrite it with AutoSeasons' own texture   |   Position = priority order (bottom wins)",
     "moveUp": "Move Up",
     "moveDown": "Move Down",
+    "moveTop": "Move to Top",
+    "moveBottom": "Move to Bottom",
     "scanError": "Could not scan: ",
     "noModsFound": "No foreign season mods detected under Data/Seasons."
   },

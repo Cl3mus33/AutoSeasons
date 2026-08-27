@@ -79,6 +79,8 @@
     "legend": "Marcado = manter a cobertura própria deste mod   |   Desmarcado = sobrescrever com a própria textura do AutoSeasons   |   Posição = ordem de prioridade (o de baixo vence)",
     "moveUp": "Mover para cima",
     "moveDown": "Mover para baixo",
+    "moveTop": "Mover para o topo",
+    "moveBottom": "Mover para o final",
     "scanError": "Não foi possível escanear: ",
     "noModsFound": "Nenhum mod sazonal externo detectado em Data/Seasons."
   },
