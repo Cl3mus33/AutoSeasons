@@ -932,6 +932,13 @@ public class ASMutagen
             }
 
             var newRecordFormKey = new FormKey(SeasonsMod.ModKey, GetLowestAvailableFormID());
+            // Mark the ID allocated immediately, exactly like the other FormID-allocation sites.
+            // GetLowestAvailableFormID() only finds an ID - the caller must reserve it, or the
+            // next allocation (a second grass duplicate, or any later TXST/record duplicate in
+            // the same session) is handed this same still-unreserved ID and the output plugin
+            // ends up with duplicate FormIDs.
+            allocatedFormIDs.Add(newRecordFormKey.ID);
+            lastUsedFormID = newRecordFormKey.ID;
             var duplicated = existingGrass.Duplicate(newRecordFormKey);
 
             if (duplicated is not Grass newGrass || newGrass.Model is null)
