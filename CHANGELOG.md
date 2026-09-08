@@ -5,6 +5,18 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-09-08
+
+### Fixed
+- `DuplicateGrass()` obtained a FormID via `GetLowestAvailableFormID()` but never reserved it
+  (unlike every other allocation site in `ASMutagen.cs`) - generating multiple seasonal grass
+  duplicates in the same run could hand out the same FormID twice, aborting the write with "Two
+  records with the same FormKey". Contributed by [@octoprocessor](https://github.com/octoprocessor)
+  via [#1](https://github.com/Cl3mus33/AutoSeasons/pull/1).
+- `ASMutagen/CMakeLists.txt` compared `${CMAKE_BUILD_TYPE}` instead of the bare `CMAKE_BUILD_TYPE`
+  in its `STREQUAL` checks, which could misselect the MSBuild configuration on single-config
+  generators where the variable is unset. Same contribution.
+
 ## [1.2.2] - 2026-08-27
 
 ### Changed
