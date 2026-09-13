@@ -1,0 +1,104 @@
+{
+  "_language": "Türkçe",
+  "common": {
+    "browse": "Gözat",
+    "cancel": "İptal",
+    "ok": "Tamam",
+    "add": "Ekle",
+    "remove": "Kaldır"
+  },
+  "launcher": {
+    "tab": {
+      "general": "Genel",
+      "options": "Seçenekler"
+    },
+    "language": {
+      "label": "Dil"
+    },
+    "theme": {
+      "label": "Tema",
+      "system": "Sistem",
+      "light": "Açık",
+      "dark": "Koyu"
+    },
+    "intro": "Yükleme sıranızı mevsimsel doku varyantları için tarar (ör. rock01.dds dosyasının yanında rock01_AUT.dds bulunması) ve Seasons of Skyrim SKSE eklentisi için eklenti + Data/Seasons/*.ini dosyalarını oluşturur. Bunu PGPatcher'dan önce çalıştırın, sonra değil - PGPatcher, AutoSeasons'ın kendi oluşturduğu mevsimsel kopyalar da dahil olmak üzere ağları sonradan PBR/Complex Material'a dönüştürür. Bu nedenle önce çalıştırmak, AutoSeasons'ın az önce oluşturduğu hiçbir şeyi PGPatcher'ın gözden kaçırmamasını sağlar.",
+    "configProfile": {
+      "label": "Yapılandırma Profili",
+      "load": "Yapılandırma Yükle...",
+      "saveAs": "Yapılandırmayı Farklı Kaydet...",
+      "loadDialogTitle": "Yapılandırma Yükle",
+      "saveDialogTitle": "Yapılandırmayı Farklı Kaydet",
+      "fileFilter": "JSON dosyaları (*.json)|*.json|Tüm dosyalar (*.*)|*.*"
+    },
+    "gameLocation": {
+      "label": "Oyun Konumu",
+      "dialogTitle": "Oyun Konumunu Seç",
+      "mo2Warning": "Mod Organizer 2 veya Vortex kullanıyorsanız AutoSeasons'ı Explorer'da exe'ye çift tıklayarak değil, mod yöneticinizin araç listesinden/panelinden çalıştırın - aksi hâlde yalnızca gerçek Data klasörünüzü görür, kurulu modlarınızı göremez ve sessizce eksik bir sonuç oluşturur."
+    },
+    "gameType": {
+      "label": "Oyun Türü"
+    },
+    "outputLocation": {
+      "label": "Çıktı Konumu",
+      "dialogTitle": "Çıktı Konumunu Seç"
+    },
+    "blocklist": {
+      "label": "Mevsimsel Varyasyon Engelleme Listesi",
+      "help": "Buradaki bir kuralla eşleşen ağlar mevsimsel varyasyondan hariç tutulur (Seasons of Skyrim yalnızca dış dünya alanlarındaki kayıtları değiştirdiği için iç mekân ağlarında kullanışlıdır). Joker karakterler (*) kullanılabilir; örneğin \"*/interiors/*\". Satır eklemek/kaldırmak için sağ tıklayın.",
+      "column": "Kural"
+    },
+    "editorIdKeywords": {
+      "label": "Mevsime Kilitli EditorID Anahtar Kelimeleri",
+      "help": "EditorIDsi bu sözcüklerden birini içeren kayıtlar (büyük/küçük harf duyarsız) mevsimsel varyasyondan tamamen hariç tutulur - zaten sabit bir mevsime/biyoma işaret eden adlar için kullanışlıdır; örneğin \"Coast\" veya \"River\". Satır eklemek/kaldırmak için sağ tıklayın.",
+      "column": "Anahtar Kelime"
+    },
+    "seasonModOverrides": {
+      "button": "Mevsim Modu Çakışmalarını Yönet..."
+    },
+    "removeGrassInWinter": {
+      "label": "Kış varyantı yoksa kışın çimleri kaldır"
+    },
+    "dryRun": {
+      "label": "Yalnızca önizleme (dry run) - ne olacağını tara ve günlüğe kaydet, hiçbir şey yazma"
+    },
+    "startButton": "Yama İşlemini Başlat",
+    "missingGameLocation": {
+      "title": "Oyun Konumu Eksik",
+      "message": "Lütfen oyunun kurulu olduğu konumu seçin."
+    },
+    "missingOutputLocation": {
+      "title": "Çıktı Konumu Eksik",
+      "message": "Lütfen bir çıktı konumu seçin."
+    }
+  },
+  "seasonModOverrides": {
+    "title": "Mevsim Modu Çakışmaları",
+    "intro": "AutoSeasons, başka bir mod bir mevsim için bir kaydı zaten kapsıyorsa normalde o modun kendi Data/Seasons ini dosyasına öncelik verir - aşağıdaki her mod başlangıçta işaretli (saygı gösteriliyor) durumdadır. AutoSeasons'ın bunun yerine üzerine yazmasını sağlamak için bir modun işaretini kaldırın: AutoSeasons, elinde sanat var olduğu her yerde kendi mevsimsel dokusunu oluşturur ve o modun kendi bildirimini tamamen kaldırır. İki saygı gösterilen mod aynı kaydı kapsıyorsa listede daha aşağıda bulunan kazanır (Mod Organizer'ın kendi yükleme sırası gibi).",
+    "noArtWarning": "Bir modun işaretini kaldırmak, AutoSeasons'ın kendine ait mevsimsel dokusu olmayan bir kayıt için o modun değişimini kaldırır - o modun değişimini korumaya geri dönmez.",
+    "scanButton": "Tara",
+    "legend": "İşaretli = bu modun kendi kapsamını koru   |   İşaretsiz = AutoSeasons'ın kendi dokusuyla üzerine yaz   |   Konum = öncelik sırası (alt sıra kazanır)",
+    "moveUp": "Yukarı Taşı",
+    "moveDown": "Aşağı Taşı",
+    "moveTop": "En Üste Taşı",
+    "moveBottom": "En Alta Taşı",
+    "scanError": "Taranamadı: ",
+    "noModsFound": "Data/Seasons altında başka mevsim modları algılanmadı."
+  },
+  "progress": {
+    "starting": "Başlatılıyor...",
+    "showDetails": "Ayrıntıları göster",
+    "working": "Çalışıyor...",
+    "done": "Tamamlandı.",
+    "failed": "Başarısız - ayrıntıları aşağıda görebilirsiniz.",
+    "doneClose": "Tamamlandı - Kapat",
+    "failedClose": "Başarısız - Kapat",
+    "completion": {
+      "title": "AutoSeasons",
+      "message": "Oluşturma tamamlandı - %zu mevsimsel kayıt oluşturuldu (%s). Henüz etkin değilse mod yöneticinizin eklenti listesinden AutoSeasons.esp'yi etkinleştirmeyi unutmayın.",
+      "zeroMessage": "Oluşturma tamamlandı, ancak 0 mevsimsel kayıt oluşturuldu. Oyun dizininizi ve engelleme listesi/anahtar kelime ayarlarını kontrol edin - bu genellikle AutoSeasons'ın beklediği yükleme sırasını bulamadığı anlamına gelir.",
+      "dryRunMessage": "Önizleme tamamlandı - %zu mevsimsel kayıt oluşturulacaktı (%s). Diske hiçbir şey yazılmadı.",
+      "zeroDryRunMessage": "Önizleme tamamlandı, ancak 0 mevsimsel kayıt oluşturulacaktı. Oyun dizininizi ve engelleme listesi/anahtar kelime ayarlarını kontrol edin - bu genellikle AutoSeasons'ın beklediği yükleme sırasını bulamadığı anlamına gelir.",
+      "conflictsSuffix": "\n\n%zu kayıt/mevsim birleşimi, aralarında öncelik belirlenmemiş birden fazla yabancı mod tarafından kapsanıyor - günlüğe bakın veya hangisinin kazanacağını belirlemek için başlatıcıdaki \"Mevsim Modu Çakışmalarını Yönet\" bölümünü açın."
+    }
+  }
+}
