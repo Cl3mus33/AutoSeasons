@@ -1,6 +1,5 @@
 #include "PGGlobals.hpp"
 
-#include "PGD3D.hpp"
 #include "PGDirectory.hpp"
 #include "common/BethesdaGame.hpp"
 #include "util/TaskQueue.hpp"
@@ -27,17 +26,6 @@ auto PGGlobals::getPGD() -> PGDirectory*
 }
 auto PGGlobals::isPGDSet() -> bool { return s_PGD != nullptr; }
 void PGGlobals::setPGD(PGDirectory* pgd) { s_PGD = pgd; }
-
-PGD3D* PGGlobals::s_PGD3D = nullptr;
-auto PGGlobals::getPGD3D() -> PGD3D*
-{
-    if (!isPGD3DSet()) {
-        throw std::runtime_error("PGD3D is not set");
-    }
-    return s_PGD3D;
-}
-auto PGGlobals::isPGD3DSet() -> bool { return s_PGD3D != nullptr; }
-void PGGlobals::setPGD3D(PGD3D* pgd3d) { s_PGD3D = pgd3d; }
 
 auto PGGlobals::getFileSaver() -> TaskQueue&
 {

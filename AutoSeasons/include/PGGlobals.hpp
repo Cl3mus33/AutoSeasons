@@ -1,6 +1,5 @@
 #pragma once
 
-#include "PGD3D.hpp"
 #include "PGDirectory.hpp"
 #include "common/BethesdaGame.hpp"
 #include "util/TaskQueue.hpp"
@@ -11,7 +10,7 @@
 /**
  * @brief Provides global singleton accessors for the core PGPatcher subsystem objects.
  *
- * Each subsystem (BethesdaGame, PGDirectory, PGD3D) is stored as a static
+ * Each subsystem (BethesdaGame, PGDirectory) is stored as a static
  * pointer and accessed via typed get/set/isSet methods. Throws std::runtime_error if a
  * getter is called before the corresponding pointer has been set.
  */
@@ -19,7 +18,6 @@ class PGGlobals {
 private:
     static BethesdaGame* s_BG;
     static PGDirectory* s_PGD;
-    static PGD3D* s_PGD3D;
 
 public:
     const static inline std::unordered_set<std::filesystem::path> s_foldersToMap
@@ -68,28 +66,6 @@ public:
      * @param pgd Pointer to the PGDirectory instance to store.
      */
     static void setPGD(PGDirectory* pgd);
-
-    /**
-     * @brief Returns the global PGD3D instance.
-     *
-     * @return Pointer to the PGD3D object.
-     * @throws std::runtime_error if PGD3D has not been set.
-     */
-    static auto getPGD3D() -> PGD3D*;
-
-    /**
-     * @brief Returns whether the global PGD3D pointer has been set.
-     *
-     * @return true if set, false otherwise.
-     */
-    static auto isPGD3DSet() -> bool;
-
-    /**
-     * @brief Sets the global PGD3D pointer.
-     *
-     * @param pgd3d Pointer to the PGD3D instance to store.
-     */
-    static void setPGD3D(PGD3D* pgd3d);
 
     /**
      * @brief Returns the singleton TaskQueue used for serialized file-save operations.

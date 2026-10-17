@@ -11,7 +11,7 @@
 #include <vector>
 
 /**
- * @brief The actual patch pipeline (GPU init, plugin init, file scan, seasonal variation, save),
+ * @brief The actual patch pipeline (plugin init, file scan, seasonal variation, save),
  * shared between the CLI and GUI entry points so they can't drift apart.
  */
 namespace AutoSeasonsRunner {
@@ -35,11 +35,11 @@ struct RunSummary {
  *
  * Resolves params.gameDir/params.outputDir to absolute paths (mutating params), sets up logging
  * (always includes a file sink at <output>/AutoSeasons.log, plus whatever extraSinks the caller
- * wants - e.g. a console sink for the CLI, or a GUI log-panel sink), then runs GPU init, plugin
+ * wants - e.g. a console sink for the CLI, or a GUI log-panel sink), then runs plugin
  * init, mesh/texture scanning, the seasonal-variation pass, and saves the output plugin.
  *
  * @param params Config to run with; gameDir/outputDir are rewritten to their absolute form.
- * @param exePath Directory the executable lives in (used to locate cshaders/ and dotnetlib/).
+ * @param exePath Directory the executable lives in (used to locate dotnetlib/).
  * @param extraSinks Additional spdlog sinks to log to, beyond the always-on output-dir file sink.
  * @param multithreading Whether to multithread the mesh/texture scan.
  * @return A summary of what was generated (or would have been, for a dry run - see

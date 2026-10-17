@@ -5,6 +5,14 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Removed
+- The GPU requirement. AutoSeasons used to start a Direct3D device and compile compute shaders on
+  every run to classify `_m` textures as Complex Material or not, a result nothing in AutoSeasons
+  ever read (seasonal PBR detection is driven by PBRNIFPatcher rules, not by texture contents). The
+  GPU initialization, the `AutoSeasons_cshaders` folder and the DirectXTex dependency are gone, so
+  the "Failed to initialize GPU" / "Failed to initialize internal shaders" errors can no longer
+  happen, and the file scan no longer waits for texture classification.
+
 ## [1.2.4] - 2026-09-13
 
 ### Added

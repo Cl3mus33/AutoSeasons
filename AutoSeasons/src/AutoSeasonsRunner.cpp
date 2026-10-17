@@ -1,6 +1,5 @@
 #include "AutoSeasonsRunner.hpp"
 
-#include "PGD3D.hpp"
 #include "PGDirectory.hpp"
 #include "PGGlobals.hpp"
 #include "PGPlugin.hpp"
@@ -77,17 +76,6 @@ auto AutoSeasonsRunner::run(ASParams& params,
 
     auto pgd = PGDirectory(&bg, params.outputDir);
     PGGlobals::setPGD(&pgd);
-
-    auto pgd3D = PGD3D(exePath / "AutoSeasons_cshaders");
-    PGGlobals::setPGD3D(&pgd3D);
-
-    if (!pgd3D.initGPU()) {
-        throw runtime_error("Failed to initialize GPU.");
-    }
-
-    if (!pgd3D.initShaders()) {
-        throw runtime_error("Failed to initialize internal shaders.");
-    }
 
     if (filesystem::equivalent(params.outputDir, bg.getGameDataPath())) {
         throw runtime_error("Output directory cannot be the same directory as your game's data folder.");
@@ -166,8 +154,6 @@ auto AutoSeasonsRunner::run(ASParams& params,
     spdlog::info("Reading NIFs and textures");
     pgd.populateFileMap(false);
     pgd.mapFiles({}, {}, {}, {}, multithreading);
-
-    pgd.waitForCMClassification();
 
     spdlog::info("Generating seasonal variation");
     std::vector<SeasonPatcher::PBRJsonRuleFile> pbrRules;

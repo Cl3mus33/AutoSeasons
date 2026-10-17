@@ -32,16 +32,12 @@ endif()
 find_package(spdlog REQUIRED CONFIG)
 find_package(bsa REQUIRED CONFIG)
 find_package(Boost REQUIRED COMPONENTS locale)
-find_package(directxtex REQUIRED CONFIG)
 find_package(nlohmann_json REQUIRED CONFIG)
 find_package(cpptrace REQUIRED CONFIG)
 find_package(CLI11 REQUIRED CONFIG)
 find_package(wxWidgets REQUIRED COMPONENTS core base)
 
-set(D3D_LIBS
-    d3d11.lib
-    dxgi.lib
-    dxguid.lib
+set(WIN_LIBS
     uuid.lib
     kernel32.lib
     user32.lib
@@ -50,15 +46,13 @@ set(D3D_LIBS
     shell32.lib
     ole32.lib
     oleaut32.lib
-    D3DCompiler.lib
 )
 target_link_libraries(${EXE_NAME} PRIVATE
     spdlog::spdlog
     bsa::bsa
     ${Boost_LIBRARIES}
     nifly
-    Microsoft::DirectXTex
-    ${D3D_LIBS}
+    ${WIN_LIBS}
     Shlwapi
     nlohmann_json::nlohmann_json
     cpptrace::cpptrace
@@ -70,19 +64,8 @@ target_link_libraries(${EXE_NAME} PRIVATE
 add_dependencies(${EXE_NAME} ASMutagenWrapper)
 
 #
-# Shader Files (needed at runtime by PGD3D for GPU-based texture classification)
-#
-add_custom_command(TARGET ${EXE_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E rm -rf $<TARGET_FILE_DIR:${EXE_NAME}>/AutoSeasons_cshaders
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${EXE_NAME}>/AutoSeasons_cshaders
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/AutoSeasons_cshaders
-        $<TARGET_FILE_DIR:${EXE_NAME}>/AutoSeasons_cshaders
-)
-
-#
 # Translations (GUI localization - ASLocale reads these from an "AutoSeasons_translations" folder
-# next to the exe. Namespaced with the same "AutoSeasons_" prefix as AutoSeasons_cshaders above -
+# next to the exe. Namespaced with an "AutoSeasons_" prefix -
 # PGPatcher, built from the same shared codebase, ships its own "translations" folder at the same
 # relative path, and since both tools get installed as MO2 mods, an unprefixed name would collide
 # and silently load whichever tool's translations win the MO2 conflict.)

@@ -10,7 +10,6 @@
 #include "util/TaskQueue.hpp"
 #include "util/TaskTracker.hpp"
 
-#include <DirectXTex.h>
 #include <nlohmann/json.hpp>
 
 #include <array>
@@ -65,8 +64,6 @@ private:
     std::shared_mutex m_textureTypesMutex;
     std::shared_mutex m_texturesMutex;
 
-    TaskQueue m_CMClassificationQueue;
-
 public:
     /**
      * @brief Constructs a PGDirectory using a BethesdaGame to resolve data paths.
@@ -103,12 +100,6 @@ public:
                   const std::function<void(size_t,
                                            size_t)>& progressCallback = {}) -> void;
 
-    /**
-     * @brief Blocks until all background Complex Material classification tasks have completed, then shuts down the
-     * queue.
-     */
-    void waitForCMClassification();
-
 private:
     auto findFiles() -> void;
 
@@ -123,9 +114,6 @@ private:
                           const PGEnums::TextureSlots& slot,
                           const PGEnums::TextureType& type,
                           const std::unordered_set<PGEnums::TextureAttribute>& attributes) -> void;
-
-    void checkIfCMAddToMap(const std::filesystem::path& texture,
-                           const PGEnums::TextureSlots& winningSlot);
 
 public:
     static auto checkGlobMatchInVector(const std::wstring& check,

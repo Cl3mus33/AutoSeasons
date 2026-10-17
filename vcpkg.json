@@ -33,13 +33,6 @@
       "version>=": "0.7.3"
     },
     {
-      "name": "directxtex",
-      "features": [
-        "dx11"
-      ],
-      "version>=": "2024-06-04"
-    },
-    {
       "name": "nlohmann-json",
       "version>=": "3.11.3#1"
     },

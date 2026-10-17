@@ -1,6 +1,5 @@
 #include "PGDirectory.hpp"
 
-#include "PGD3D.hpp"
 #include "PGGlobals.hpp"
 #include "PGPlugin.hpp"
 #include "common/BethesdaDirectory.hpp"
@@ -16,7 +15,6 @@
 
 #include "NifFile.hpp"
 #include "Shaders.hpp"
-#include <DirectXTex.h>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/case_conv.hpp>
 #include <boost/algorithm/string/predicate.hpp>
@@ -127,22 +125,6 @@ auto PGDirectory::findFiles() -> void
     }
 }
 
-void PGDirectory::waitForCMClassification()
-{
-    if (m_CMClassificationQueue.isShutdown()) {
-        // already done
-        return;
-    }
-
-    if (m_CMClassificationQueue.isProcessing()) {
-        Logger::info("Waiting for extended texture classification to complete...");
-        m_CMClassificationQueue.waitForCompletion();
-    }
-
-    // shutdown the queue to free resources
-    m_CMClassificationQueue.shutdown();
-}
-
 auto PGDirectory::mapFiles(const vector<wstring>& nifBlocklist,
                            const vector<wstring>& nifAllowlist,
                            const vector<pair<wstring,
@@ -236,20 +218,6 @@ auto PGDirectory::mapFiles(const vector<wstring>& nifBlocklist,
             continue;
         }
 
-        // extended classification
-        // check if CM
-        if (winningType == PGEnums::TextureType::ENVIRONMENTMASK && !isFileInBSA(texture, parallaxBSAExcludes)) {
-            if (multithreading) {
-                m_CMClassificationQueue.queueTask(
-                    [this, texture, winningSlot]() -> void { checkIfCMAddToMap(texture, winningSlot); });
-            } else {
-                checkIfCMAddToMap(texture, winningSlot);
-            }
-
-            // defer adding to texture maps until classification is done
-            continue;
-        }
-
         // Add to texture map
         if (winningSlot != PGEnums::TextureSlots::UNKNOWN) {
             // Only add if no unknowns
@@ -260,47 +228,6 @@ auto PGDirectory::mapFiles(const vector<wstring>& nifBlocklist,
     // cleanup
     m_unconfirmedTextures.clear();
     m_unconfirmedMeshes.clear();
-}
-
-void PGDirectory::checkIfCMAddToMap(const std::filesystem::path& texture,
-                                    const PGEnums::TextureSlots& winningSlot)
-{
-    // classify as CM or not
-    bool hasMetalness = false;
-    bool hasGlosiness = false;
-    bool hasEnvMask = false;
-    bool result = false;
-
-    bool success = false;
-    try {
-        success = PGGlobals::getPGD3D()->checkIfCM(texture, result, hasEnvMask, hasGlosiness, hasMetalness);
-    } catch (...) {
-        success = false;
-    }
-
-    if (!success) {
-        Logger::error(L"Unable to process texture: {}", texture.wstring());
-        return;
-    }
-
-    if (!result) {
-        // regular env mask
-        addToTextureMaps(texture, winningSlot, PGEnums::TextureType::ENVIRONMENTMASK, {});
-        return;
-    }
-
-    unordered_set<PGEnums::TextureAttribute> attributes;
-    if (hasEnvMask) {
-        attributes.insert(PGEnums::TextureAttribute::CM_ENVMASK);
-    }
-    if (hasGlosiness) {
-        attributes.insert(PGEnums::TextureAttribute::CM_GLOSSINESS);
-    }
-    if (hasMetalness) {
-        attributes.insert(PGEnums::TextureAttribute::CM_METALNESS);
-    }
-
-    addToTextureMaps(texture, winningSlot, PGEnums::TextureType::COMPLEXMATERIAL, attributes);
 }
 
 auto PGDirectory::checkGlobMatchInVector(const wstring& check,
