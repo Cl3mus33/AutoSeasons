@@ -2,8 +2,11 @@
 
 #include "GUI/SeasonModOverrideDialog.hpp"
 #include "GUI/components/PGCustomListctrlChangedEvent.hpp"
+#include "Mo2Launcher.hpp"
 #include "common/BethesdaGame.hpp"
 #include "util/StringUtil.hpp"
+
+#include <algorithm>
 
 #include <wx/notebook.h>
 #include <wx/statline.h>
@@ -100,6 +103,64 @@ LauncherWindow::LauncherWindow(const ASParams& initParams, filesystem::path exeP
     configProfileSizer->Add(saveConfigButton, 0, wxALL, BORDER_SIZE);
     generalSizer->Add(configProfileSizer, 0);
 
+    // Mod Organizer 2 instance - AutoSeasons starts itself inside MO2's virtual file system, so it need not be
+    // added to MO2's tool list. Not offered when it already runs inside MO2.
+    if (!Mo2Launcher::isRunningUnderMo2()) {
+        m_mo2Instances = Mo2Launcher::findGlobalInstances();
+        if (!initParams.mo2Instance.empty()
+            && ranges::none_of(m_mo2Instances, [&](const Mo2Launcher::Instance& instance) -> bool {
+                   return instance.argument == initParams.mo2Instance;
+               })) {
+            try { // a portable instance picked earlier
+                m_mo2Instances.push_back(Mo2Launcher::readInstance(initParams.mo2Instance));
+            } catch (const exception&) {
+                // the instance is gone; the choice falls back to "None"
+            }
+        }
+
+        auto* mo2Label = makeSectionLabel(generalPanel, ASTr("launcher.mo2.label", "Mod Organizer 2 Instance"));
+        generalSizer->Add(mo2Label, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
+
+        auto* mo2Help = new wxStaticText(generalPanel, wxID_ANY,
+            ASTr("launcher.mo2.help",
+                "Pick your Mod Organizer 2 instance and profile and AutoSeasons runs itself inside them: no need to "
+                "add it to MO2's tool list. Leave on \"None\" if you start AutoSeasons from MO2 yourself."));
+        mo2Help->Wrap(520);
+        generalSizer->Add(mo2Help, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
+
+        wxArrayString instanceChoices;
+        instanceChoices.Add(ASTr("launcher.mo2.none", "None (started from MO2)"));
+        int selectedInstanceIndex = 0;
+        for (size_t i = 0; i < m_mo2Instances.size(); i++) {
+            instanceChoices.Add(wxString(m_mo2Instances[i].displayName));
+            if (m_mo2Instances[i].argument == initParams.mo2Instance) {
+                selectedInstanceIndex = static_cast<int>(i) + 1;
+            }
+        }
+        m_mo2InstanceChoice = new wxChoice(generalPanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, instanceChoices);
+        m_mo2InstanceChoice->SetSelection(selectedInstanceIndex);
+        m_mo2InstanceChoice->Bind(wxEVT_CHOICE, &LauncherWindow::onMo2InstanceChanged, this);
+        m_mo2ProfileChoice = new wxChoice(generalPanel, wxID_ANY);
+
+        auto* mo2ChoiceSizer = new wxBoxSizer(wxHORIZONTAL);
+        mo2ChoiceSizer->Add(m_mo2InstanceChoice, 1, wxEXPAND | wxALL, BORDER_SIZE);
+        mo2ChoiceSizer->Add(m_mo2ProfileChoice, 1, wxEXPAND | wxALL, BORDER_SIZE);
+        generalSizer->Add(mo2ChoiceSizer, 0, wxEXPAND);
+
+        const auto detectedMo2Exe = Mo2Launcher::findMo2Exe();
+        m_mo2ExeTextbox = new wxTextCtrl(generalPanel, wxID_ANY,
+            !initParams.mo2Exe.empty() ? initParams.mo2Exe.wstring() : (detectedMo2Exe ? detectedMo2Exe->wstring() : wstring()));
+        m_mo2ExeTextbox->SetHint(ASTr("launcher.mo2.exeHint", "Path to ModOrganizer.exe"));
+        m_mo2ExeBrowseButton = new wxButton(generalPanel, wxID_ANY, ASTr("common.browse", "Browse"));
+        m_mo2ExeBrowseButton->Bind(wxEVT_BUTTON, &LauncherWindow::onBrowseMo2Exe, this);
+        m_mo2ExeSizer = new wxBoxSizer(wxHORIZONTAL);
+        m_mo2ExeSizer->Add(m_mo2ExeTextbox, 1, wxEXPAND | wxALL, BORDER_SIZE);
+        m_mo2ExeSizer->Add(m_mo2ExeBrowseButton, 0, wxALL, BORDER_SIZE);
+        generalSizer->Add(m_mo2ExeSizer, 0, wxEXPAND);
+
+        refreshMo2Profiles(initParams.mo2Profile);
+    }
+
     // Game location
     auto* gameLocationLabel = makeSectionLabel(generalPanel, ASTr("launcher.gameLocation.label", "Game Location"));
     generalSizer->Add(gameLocationLabel, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
@@ -109,9 +170,10 @@ LauncherWindow::LauncherWindow(const ASParams& initParams, filesystem::path exeP
     // run silently produces an incomplete result (it "succeeds", just against the wrong files).
     auto* gameLocationWarning = new wxStaticText(generalPanel, wxID_ANY,
         ASTr("launcher.gameLocation.mo2Warning",
-            "If you use Mod Organizer 2 or Vortex, run AutoSeasons through its tool list/dashboard, "
-            "not by double-clicking the exe in Explorer - otherwise it only sees your real Data "
-            "folder, not your installed mods, and silently produces an incomplete result."));
+            "If you use Vortex, run AutoSeasons through its dashboard, not by double-clicking the exe in "
+            "Explorer. With Mod Organizer 2, pick your instance above, or run AutoSeasons from its tool "
+            "list. Otherwise it only sees your real Data folder, not your installed mods, and silently "
+            "produces an incomplete result."));
     gameLocationWarning->SetForegroundColour(wxColour(180, 95, 0)); // amber - distinct from the accent green, reads as caution
     gameLocationWarning->Wrap(490);
     generalSizer->Add(gameLocationWarning, 0, wxLEFT | wxRIGHT | wxTOP, BORDER_SIZE);
@@ -215,10 +277,10 @@ LauncherWindow::LauncherWindow(const ASParams& initParams, filesystem::path exeP
     // Foreign season mod overrides - opens a separate dialog rather than an inline list, since
     // populating it requires scanning the (possibly not-yet-saved) game location above, not just
     // editing plain text like the two lists above it.
-    auto* seasonModOverridesButton = new wxButton(
+    m_manageConflictsButton = new wxButton(
         generalPanel, wxID_ANY, ASTr("launcher.seasonModOverrides.button", "Manage Season Mod Conflicts..."));
-    seasonModOverridesButton->Bind(wxEVT_BUTTON, &LauncherWindow::onManageSeasonModOverrides, this);
-    generalSizer->Add(seasonModOverridesButton, 0, wxALL, BORDER_SIZE);
+    m_manageConflictsButton->Bind(wxEVT_BUTTON, &LauncherWindow::onManageSeasonModOverrides, this);
+    generalSizer->Add(m_manageConflictsButton, 0, wxALL, BORDER_SIZE);
 
     // Remove grass in winter - on by default (matches ASParams::removeGrassInWinter's own default),
     // dropping any grass slot with no detected winter mesh variant rather than leaving it visible
@@ -321,6 +383,10 @@ LauncherWindow::LauncherWindow(const ASParams& initParams, filesystem::path exeP
     mainSizer->Add(buttonSizer, 0, wxEXPAND);
 
     SetSizerAndFit(mainSizer);
+
+    if (m_mo2InstanceChoice != nullptr) {
+        updateMo2Controls();
+    }
 }
 
 void LauncherWindow::getParams(ASParams& outParams) const
@@ -370,6 +436,103 @@ void LauncherWindow::getParams(ASParams& outParams) const
     outParams.foreignSeasonModPriority = m_foreignSeasonModPriority;
     outParams.foreignSeasonModPriorityByType = m_foreignSeasonModPriorityByType;
     outParams.dryRun = m_dryRunCheckbox->GetValue();
+
+    outParams.mo2Instance.clear();
+    outParams.mo2Profile.clear();
+    outParams.mo2Exe.clear();
+    if (const auto* instance = selectedMo2Instance()) {
+        outParams.mo2Instance = instance->argument;
+        if (m_mo2ProfileChoice->GetSelection() != wxNOT_FOUND) {
+            outParams.mo2Profile = m_mo2ProfileChoice->GetStringSelection().ToStdWstring();
+        }
+        outParams.mo2Exe = m_mo2ExeTextbox->GetValue().ToStdWstring();
+    }
+}
+
+auto LauncherWindow::selectedMo2Instance() const -> const Mo2Launcher::Instance*
+{
+    if (m_mo2InstanceChoice == nullptr) {
+        return nullptr;
+    }
+    const auto selection = m_mo2InstanceChoice->GetSelection();
+    if (selection <= 0 || static_cast<size_t>(selection) > m_mo2Instances.size()) {
+        return nullptr;
+    }
+    return &m_mo2Instances[static_cast<size_t>(selection) - 1];
+}
+
+void LauncherWindow::refreshMo2Profiles(const wstring& preferredProfile)
+{
+    m_mo2ProfileChoice->Clear();
+    const auto* instance = selectedMo2Instance();
+    if (instance == nullptr) {
+        return;
+    }
+
+    int selected = 0;
+    for (size_t i = 0; i < instance->profiles.size(); i++) {
+        m_mo2ProfileChoice->Append(wxString(instance->profiles[i]));
+        if (instance->profiles[i] == preferredProfile
+            || (selected == 0 && preferredProfile.empty() && instance->profiles[i] == instance->selectedProfile)) {
+            selected = static_cast<int>(i);
+        }
+    }
+    if (m_mo2ProfileChoice->GetCount() > 0) {
+        m_mo2ProfileChoice->SetSelection(selected);
+    }
+}
+
+void LauncherWindow::updateMo2Controls()
+{
+    const bool hasInstance = selectedMo2Instance() != nullptr;
+    m_mo2ProfileChoice->Enable(hasInstance);
+    m_mo2ExeTextbox->Enable(hasInstance);
+    m_mo2ExeBrowseButton->Enable(hasInstance);
+    m_mo2ExeSizer->Show(hasInstance);
+    // Mods are only visible inside MO2: the conflict dialog scans the game's real Data folder from here
+    if (m_manageConflictsButton != nullptr) {
+        m_manageConflictsButton->Enable(!hasInstance);
+    }
+    Layout();
+}
+
+void LauncherWindow::onMo2InstanceChanged([[maybe_unused]] wxCommandEvent& event)
+{
+    refreshMo2Profiles({});
+    updateMo2Controls();
+
+    const auto* instance = selectedMo2Instance();
+    if (instance == nullptr) {
+        return;
+    }
+
+    // The instance says which game it manages and where its mods live; the output is the mod AutoSeasons fills
+    m_gameLocationTextbox->SetValue(instance->gameDir.wstring());
+    if (instance->gameName.find("VR") != string::npos || instance->gameName.find("Enderal") != string::npos) {
+        const auto wanted = instance->gameName.find("VR") != string::npos ? BethesdaGame::GameType::SKYRIM_VR
+                                                                            : BethesdaGame::GameType::ENDERAL_SE;
+        const auto& gameTypes = BethesdaGame::getGameTypes();
+        for (size_t i = 0; i < gameTypes.size(); i++) {
+            if (gameTypes[i] == wanted) {
+                m_gameTypeChoice->SetSelection(static_cast<int>(i));
+            }
+        }
+    }
+    const auto output = m_outputLocationTextbox->GetValue().ToStdWstring();
+    if (output.empty() || output == m_autoOutputLocation
+        || filesystem::path(output).filename() == L"AutoSeasons_Output") {
+        m_autoOutputLocation = (instance->modsDir / L"AutoSeasons Output").wstring();
+        m_outputLocationTextbox->SetValue(m_autoOutputLocation);
+    }
+}
+
+void LauncherWindow::onBrowseMo2Exe([[maybe_unused]] wxCommandEvent& event)
+{
+    wxFileDialog dialog(this, ASTr("launcher.mo2.exeDialogTitle", "Select ModOrganizer.exe"), wxEmptyString, wxEmptyString,
+        "ModOrganizer.exe|ModOrganizer.exe|*.exe|*.exe", wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (dialog.ShowModal() == wxID_OK) {
+        m_mo2ExeTextbox->SetValue(dialog.GetPath());
+    }
 }
 
 void LauncherWindow::onLanguageChanged([[maybe_unused]] wxCommandEvent& event)
@@ -488,6 +651,21 @@ void LauncherWindow::applyLoadedParams(const ASParams& params)
     m_foreignSeasonModPriority = params.foreignSeasonModPriority;
     m_foreignSeasonModPriorityByType = params.foreignSeasonModPriorityByType;
 
+    if (m_mo2InstanceChoice != nullptr) {
+        int selectedInstance = 0;
+        for (size_t i = 0; i < m_mo2Instances.size(); i++) {
+            if (m_mo2Instances[i].argument == params.mo2Instance) {
+                selectedInstance = static_cast<int>(i) + 1;
+            }
+        }
+        m_mo2InstanceChoice->SetSelection(selectedInstance);
+        refreshMo2Profiles(params.mo2Profile);
+        if (!params.mo2Exe.empty()) {
+            m_mo2ExeTextbox->SetValue(params.mo2Exe.wstring());
+        }
+        updateMo2Controls();
+    }
+
     updateListColumnWidths();
 }
 
@@ -503,6 +681,27 @@ void LauncherWindow::updateListColumnWidths()
 
 void LauncherWindow::onOkButtonPressed([[maybe_unused]] wxCommandEvent& event)
 {
+    if (const auto* instance = selectedMo2Instance()) {
+        // What the instance knows fills in what was left empty
+        if (m_gameLocationTextbox->GetValue().IsEmpty()) {
+            m_gameLocationTextbox->SetValue(instance->gameDir.wstring());
+        }
+        if (m_outputLocationTextbox->GetValue().IsEmpty()) {
+            m_outputLocationTextbox->SetValue((instance->modsDir / L"AutoSeasons Output").wstring());
+        }
+        if (m_mo2ProfileChoice->GetSelection() == wxNOT_FOUND) {
+            wxMessageBox(ASTr("launcher.mo2.missingProfile.message", "The selected Mod Organizer instance has no profile."),
+                ASTr("launcher.mo2.missingProfile.title", "Missing Profile"), wxOK | wxICON_WARNING, this);
+            return;
+        }
+        if (!filesystem::exists(filesystem::path(m_mo2ExeTextbox->GetValue().ToStdWstring()))) {
+            wxMessageBox(ASTr("launcher.mo2.missingExe.message",
+                             "ModOrganizer.exe was not found. Please select it with Browse."),
+                ASTr("launcher.mo2.missingExe.title", "Missing ModOrganizer.exe"), wxOK | wxICON_WARNING, this);
+            return;
+        }
+    }
+
     if (m_gameLocationTextbox->GetValue().IsEmpty()) {
         wxMessageBox(ASTr("launcher.missingGameLocation.message", "Please select your game's install location."),
             ASTr("launcher.missingGameLocation.title", "Missing Game Location"), wxOK | wxICON_WARNING, this);

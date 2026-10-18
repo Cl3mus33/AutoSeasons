@@ -2,13 +2,18 @@
 
 #include "ASLocale.hpp"
 #include "AutoSeasonsRunner.hpp"
+#include "Mo2Launcher.hpp"
+#include "util/StringUtil.hpp"
 
 #include <spdlog/sinks/base_sink.h>
 
 #include <algorithm>
+#include <chrono>
 #include <exception>
+#include <filesystem>
 #include <mutex>
 #include <regex>
+#include <stdexcept>
 
 using namespace std;
 
@@ -69,6 +74,82 @@ protected:
 private:
     ProgressWindow* m_window;
 };
+
+// Runs the generation inside the Mod Organizer 2 instance and profile the params name: this process starts
+// Mod Organizer, which runs a second AutoSeasons in its virtual file system, and relays that run's log. The summary
+// the completion message shows is read back from the log lines the run writes.
+auto runThroughMo2(const ASParams& params, const function<void(const string&)>& onLogLine,
+    AutoSeasonsRunner::RunSummary& summary) -> bool
+{
+    Mo2Launcher::Request request;
+    request.instance = Mo2Launcher::readInstance(params.mo2Instance);
+    request.profile = params.mo2Profile.empty() ? request.instance.selectedProfile : params.mo2Profile;
+    if (ranges::find(request.instance.profiles, request.profile) == request.instance.profiles.end()) {
+        throw runtime_error("The profile \"" + StringUtil::utf16toUTF8(request.profile) + "\" does not exist in the instance \""
+            + StringUtil::utf16toUTF8(request.instance.displayName) + "\"");
+    }
+    if (!params.mo2Exe.empty()) {
+        request.mo2Exe = params.mo2Exe;
+    } else if (const auto found = Mo2Launcher::findMo2Exe()) {
+        request.mo2Exe = *found;
+    } else {
+        throw runtime_error("Cannot find ModOrganizer.exe. Select it in the Mod Organizer 2 section of the launcher.");
+    }
+    if (!filesystem::exists(request.mo2Exe)) {
+        throw runtime_error("ModOrganizer.exe does not exist: " + request.mo2Exe.string());
+    }
+
+    ASParams childParams = params;
+    childParams.mo2Instance.clear();
+    childParams.mo2Profile.clear();
+    childParams.mo2Exe.clear();
+    if (childParams.gameDir.empty()) {
+        childParams.gameDir = request.instance.gameDir;
+    }
+    if (childParams.outputDir.empty()) {
+        childParams.outputDir = request.instance.modsDir / L"AutoSeasons Output";
+    }
+    childParams.gameDir = filesystem::absolute(childParams.gameDir);
+    childParams.outputDir = filesystem::absolute(childParams.outputDir);
+
+    const auto configDir = filesystem::temp_directory_path()
+        / (L"AutoSeasons_config_" + to_wstring(chrono::steady_clock::now().time_since_epoch().count()));
+    filesystem::create_directories(configDir);
+    struct Cleanup {
+        filesystem::path dir;
+        ~Cleanup()
+        {
+            error_code ec;
+            filesystem::remove_all(dir, ec);
+        }
+    } cleanup { configDir };
+    const auto configFile = configDir / L"config.json";
+    ASConfig::saveTo(configFile, childParams);
+
+    request.childArguments = { "--config-file", StringUtil::utf16toUTF8(configFile.wstring()) };
+    if (params.dryRun) {
+        request.childArguments.emplace_back("--dry-run");
+    }
+
+    static const regex breakdownPattern(R"(breakdown: (.*)$)");
+    request.onLogLine = [&](const string& line) -> void {
+        onLogLine(line);
+        smatch match;
+        if (regex_search(line, match, breakdownPattern)) {
+            summary.countsByType.clear();
+            summary.totalRecords = 0;
+            static const regex entryPattern(R"((\w+): (\d+))");
+            const string list = match[1].str();
+            for (sregex_iterator it(list.begin(), list.end(), entryPattern), end; it != end; ++it) {
+                const auto count = static_cast<size_t>(stoull((*it)[2].str()));
+                summary.countsByType.emplace_back((*it)[1].str(), count);
+                summary.totalRecords += count;
+            }
+        }
+    };
+
+    return Mo2Launcher::runUnderMo2(request) == 0;
+}
 }
 
 ProgressWindow::ProgressWindow(const ASParams& params, const filesystem::path& exePath)
@@ -139,8 +220,18 @@ ProgressWindow::ProgressWindow(const ASParams& params, const filesystem::path& e
         bool success = true;
         try {
             ASParams localParams = params;
-            const vector<spdlog::sink_ptr> sinks { make_shared<WxLogSink>(this) };
-            m_runSummary = AutoSeasonsRunner::run(localParams, exePath, sinks);
+            if (!params.mo2Instance.empty() && !Mo2Launcher::isRunningUnderMo2()) {
+                success = runThroughMo2(
+                    localParams,
+                    [this](const string& line) -> void {
+                        const auto text = wxString::FromUTF8(line + '\n');
+                        wxTheApp->CallAfter([this, text]() -> void { appendLog(text); });
+                    },
+                    m_runSummary);
+            } else {
+                const vector<spdlog::sink_ptr> sinks { make_shared<WxLogSink>(this) };
+                m_runSummary = AutoSeasonsRunner::run(localParams, exePath, sinks);
+            }
         } catch (const exception& e) {
             success = false;
             const string message = e.what();

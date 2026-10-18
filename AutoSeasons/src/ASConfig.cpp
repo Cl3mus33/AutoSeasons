@@ -76,6 +76,15 @@ auto ASConfig::loadFrom(const filesystem::path& configFilePath) -> ASParams
         if (configJ.contains("outputDir")) {
             params.outputDir = StringUtil::utf8toUTF16(configJ["outputDir"].get<string>());
         }
+        if (configJ.contains("mo2Instance")) {
+            params.mo2Instance = StringUtil::utf8toUTF16(configJ["mo2Instance"].get<string>());
+        }
+        if (configJ.contains("mo2Profile")) {
+            params.mo2Profile = StringUtil::utf8toUTF16(configJ["mo2Profile"].get<string>());
+        }
+        if (configJ.contains("mo2Exe")) {
+            params.mo2Exe = StringUtil::utf8toUTF16(configJ["mo2Exe"].get<string>());
+        }
         if (configJ.contains("esmMode")) {
             params.esmMode = configJ["esmMode"].get<int>();
         }
@@ -144,6 +153,9 @@ void ASConfig::saveTo(const filesystem::path& configFilePath, const ASParams& pa
     configJ["gameType"] = gameTypeToString(params.gameType);
     configJ["outputDir"] = StringUtil::utf16toUTF8(params.outputDir.wstring());
     configJ["esmMode"] = params.esmMode;
+    configJ["mo2Instance"] = StringUtil::utf16toUTF8(params.mo2Instance);
+    configJ["mo2Profile"] = StringUtil::utf16toUTF8(params.mo2Profile);
+    configJ["mo2Exe"] = StringUtil::utf16toUTF8(params.mo2Exe.wstring());
     configJ["meshBlockList"] = nlohmann::json::array();
     for (const auto& item : params.meshBlockList) {
         configJ["meshBlockList"].push_back(StringUtil::utf16toUTF8(item));

@@ -30,10 +30,25 @@
       "saveDialogTitle": "Save Config As",
       "fileFilter": "JSON files (*.json)|*.json|All files (*.*)|*.*"
     },
+    "mo2": {
+      "label": "Mod Organizer 2 Instance",
+      "help": "Pick your Mod Organizer 2 instance and profile and AutoSeasons runs itself inside them: no need to add it to MO2's tool list. Leave on \"None\" if you start AutoSeasons from MO2 yourself.",
+      "none": "None (started from MO2)",
+      "exeHint": "Path to ModOrganizer.exe",
+      "exeDialogTitle": "Select ModOrganizer.exe",
+      "missingProfile": {
+        "title": "Missing Profile",
+        "message": "The selected Mod Organizer instance has no profile."
+      },
+      "missingExe": {
+        "title": "Missing ModOrganizer.exe",
+        "message": "ModOrganizer.exe was not found. Please select it with Browse."
+      }
+    },
     "gameLocation": {
       "label": "Game Location",
       "dialogTitle": "Select Game Location",
-      "mo2Warning": "If you use Mod Organizer 2 or Vortex, run AutoSeasons through its tool list/dashboard, not by double-clicking the exe in Explorer - otherwise it only sees your real Data folder, not your installed mods, and silently produces an incomplete result."
+      "mo2Warning": "If you use Vortex, run AutoSeasons through its dashboard, not by double-clicking the exe in Explorer. With Mod Organizer 2, pick your instance above, or run AutoSeasons from its tool list. Otherwise it only sees your real Data folder, not your installed mods, and silently produces an incomplete result."
     },
     "gameType": {
       "label": "Game Type"

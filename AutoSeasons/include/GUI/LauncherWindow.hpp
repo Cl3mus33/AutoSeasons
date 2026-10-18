@@ -3,6 +3,7 @@
 #include "ASConfig.hpp"
 #include "ASLocale.hpp"
 #include "GUI/components/PGModifiableListCtrl.hpp"
+#include "Mo2Launcher.hpp"
 
 #include <wx/wx.h>
 
@@ -40,6 +41,15 @@ private:
     wxCheckBox* m_removeGrassInWinterCheckbox;
     wxCheckBox* m_dryRunCheckbox;
     wxButton* m_okButton;
+    wxButton* m_manageConflictsButton = nullptr;
+    // Mod Organizer 2 instance selection (null while AutoSeasons already runs inside MO2)
+    std::vector<Mo2Launcher::Instance> m_mo2Instances;
+    wxChoice* m_mo2InstanceChoice = nullptr;
+    wxChoice* m_mo2ProfileChoice = nullptr;
+    wxTextCtrl* m_mo2ExeTextbox = nullptr;
+    wxButton* m_mo2ExeBrowseButton = nullptr;
+    wxBoxSizer* m_mo2ExeSizer = nullptr;
+    std::wstring m_autoOutputLocation; ///< The output location last filled in from an instance
     std::vector<std::wstring> m_overrideForeignSeasonMods;
     std::unordered_map<std::string, std::vector<std::wstring>> m_overrideForeignSeasonModsByType;
     std::vector<std::wstring> m_foreignSeasonModPriority;
@@ -53,6 +63,11 @@ private:
     void onLoadConfig(wxCommandEvent& event);
     void onSaveConfigAs(wxCommandEvent& event);
     void onOkButtonPressed(wxCommandEvent& event);
+    void onMo2InstanceChanged(wxCommandEvent& event);
+    void onBrowseMo2Exe(wxCommandEvent& event);
+    [[nodiscard]] auto selectedMo2Instance() const -> const Mo2Launcher::Instance*;
+    void refreshMo2Profiles(const std::wstring& preferredProfile);
+    void updateMo2Controls();
     void updateListColumnWidths();
     void applyLoadedParams(const ASParams& params);
 };

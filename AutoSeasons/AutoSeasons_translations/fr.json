@@ -30,10 +30,25 @@
       "saveDialogTitle": "Enregistrer la config sous",
       "fileFilter": "Fichiers JSON (*.json)|*.json|Tous les fichiers (*.*)|*.*"
     },
+    "mo2": {
+      "label": "Instance Mod Organizer 2",
+      "help": "Choisissez votre instance et votre profil Mod Organizer 2 : AutoSeasons s'exécute alors tout seul à l'intérieur, sans avoir besoin de l'ajouter à la liste d'outils de MO2. Laissez sur « Aucune » si vous lancez AutoSeasons vous-même depuis MO2.",
+      "none": "Aucune (lancé depuis MO2)",
+      "exeHint": "Chemin de ModOrganizer.exe",
+      "exeDialogTitle": "Sélectionner ModOrganizer.exe",
+      "missingProfile": {
+        "title": "Profil manquant",
+        "message": "L'instance Mod Organizer sélectionnée n'a aucun profil."
+      },
+      "missingExe": {
+        "title": "ModOrganizer.exe introuvable",
+        "message": "ModOrganizer.exe est introuvable. Sélectionnez-le avec Parcourir."
+      }
+    },
     "gameLocation": {
       "label": "Emplacement du jeu",
       "dialogTitle": "Sélectionner l'emplacement du jeu",
-      "mo2Warning": "Si vous utilisez Mod Organizer 2 ou Vortex, lancez AutoSeasons depuis sa liste d'outils/son tableau de bord, et non en double-cliquant sur l'exe dans l'Explorateur - sinon il ne verra que votre vrai dossier Data, pas vos mods installés, et produira silencieusement un résultat incomplet."
+      "mo2Warning": "Si vous utilisez Vortex, lancez AutoSeasons depuis son tableau de bord, et non en double-cliquant sur l'exe dans l'Explorateur. Avec Mod Organizer 2, choisissez votre instance ci-dessus, ou lancez AutoSeasons depuis sa liste d'outils. Sinon il ne verra que votre vrai dossier Data, pas vos mods installés, et produira silencieusement un résultat incomplet."
     },
     "gameType": {
       "label": "Type de jeu"

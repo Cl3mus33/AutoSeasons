@@ -3,16 +3,23 @@
 #include "AutoSeasonsRunner.hpp"
 #include "GUI/LauncherWindow.hpp"
 #include "GUI/ProgressWindow.hpp"
+#include "Mo2Launcher.hpp"
 #include "common/BethesdaGame.hpp"
 #include "util/ExceptionHandler.hpp"
+#include "util/StringUtil.hpp"
 
 #include <CLI/CLI.hpp>
 #include <cpptrace/from_current.hpp>
+#include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 #include <wx/wx.h>
 
+#include <algorithm>
 #include <array>
+#include <chrono>
+#include <fstream>
+#include <unordered_set>
 #include <exception>
 #include <filesystem>
 #include <iostream>
@@ -83,6 +90,15 @@ struct AutoSeasonsCLIArgs {
     bool shortcut = false;
     ASParams params;
     string gameType = "skyrimse";
+    // Run under a Mod Organizer 2 instance and profile instead of from inside MO2 (see Mo2Launcher)
+    string mo2Exe;
+    string mo2Instance;
+    string mo2Profile;
+    // Set on the child run that Mo2Launcher starts inside MO2: where it reports its end and its log
+    string statusFile;
+    string mirrorLog;
+    // Settings for that child run, written by the launcher window (everything that has no command line option)
+    string configFile;
 };
 
 void addArguments(CLI::App& app, AutoSeasonsCLIArgs& args)
@@ -91,9 +107,8 @@ void addArguments(CLI::App& app, AutoSeasonsCLIArgs& args)
     app.add_flag("--no-multithreading", args.multithreading, "Disable multithreading")->default_val(false);
     app.add_flag("--shortcut", args.shortcut, "Keep AutoSeasons running at the end");
 
-    app.add_option(
-           "game-dir", args.params.gameDir, "Path to your game's install directory (or merged mod-manager view)")
-        ->required();
+    app.add_option("game-dir", args.params.gameDir,
+        "Path to your game's install directory (or merged mod-manager view); not needed with --mo2-instance");
     app.add_option("output", args.params.outputDir, "Output directory")->default_str("AutoSeasons_Output");
     app.add_option("--game-type", args.gameType, "skyrimse, skyrimvr, skyrimgog, or enderalse")
         ->default_str("skyrimse");
@@ -122,6 +137,99 @@ void addArguments(CLI::App& app, AutoSeasonsCLIArgs& args)
         ->default_val(false);
     app.add_option("--esm-mode", args.params.esmMode, "0 = ESM-flag output plugin, 1 = same, 2 = do not ESM-flag")
         ->default_val(0);
+    app.add_option("--mo2-instance", args.mo2Instance,
+           "Run under this Mod Organizer 2 instance (a global instance's name, or the folder of a portable one), "
+           "without launching AutoSeasons from MO2. game-dir and output then default to the instance's game and "
+           "to its mods\\AutoSeasons Output folder");
+    app.add_option("--mo2-profile", args.mo2Profile, "The MO2 profile to use (default: the instance's last used one)");
+    app.add_option("--mo2-exe", args.mo2Exe, "Path to ModOrganizer.exe (default: found from MO2's own settings)");
+    app.add_option(Mo2Launcher::statusFileOption, args.statusFile)->group("");
+    app.add_option(Mo2Launcher::mirrorLogOption, args.mirrorLog)->group("");
+    app.add_option("--config-file", args.configFile)->group("");
+}
+
+
+// The positional arguments and the Mod Organizer options of a command line are dropped; every other option is passed
+// on as given to the run inside Mod Organizer.
+auto optionsForChildRun(int argC, char** argV) -> vector<string>
+{
+    static const unordered_set<string> flags { "-v", "-vv", "--no-multithreading", "--shortcut", "--dry-run",
+        "--remove-grass-in-winter", "--no-remove-grass-in-winter" };
+    static const unordered_set<string> mo2Options { "--mo2-instance", "--mo2-profile", "--mo2-exe" };
+
+    vector<string> options;
+    for (int i = 1; i < argC; ++i) {
+        const string token = argV[i];
+        if (token == "--") {
+            break; // the rest are positional arguments
+        }
+        const auto name = token.substr(0, token.find('='));
+        if (mo2Options.contains(name)) {
+            if (name == token) {
+                ++i; // its value is the next token
+            }
+        } else if (token.starts_with("-") && token.size() > 1) {
+            options.push_back(token);
+            if (!flags.contains(name) && name == token && i + 1 < argC) {
+                options.emplace_back(argV[++i]);
+            }
+        }
+    }
+    return options;
+}
+
+auto gameTypeOfInstance(const Mo2Launcher::Instance& instance) -> string
+{
+    if (instance.gameName.find("VR") != string::npos) {
+        return "skyrimvr";
+    }
+    if (instance.gameName.find("Enderal") != string::npos) {
+        return "enderalse";
+    }
+    return "skyrimse";
+}
+
+// Runs the whole generation inside the Mod Organizer 2 instance and profile the arguments name: this process only
+// starts Mod Organizer, shows what the run logs and returns its exit code.
+auto runThroughMo2(AutoSeasonsCLIArgs& args, CLI::App& app, int argC, char** argV) -> int
+{
+    Mo2Launcher::Request request;
+    request.instance = Mo2Launcher::readInstance(StringUtil::utf8toUTF16(args.mo2Instance));
+    request.profile = args.mo2Profile.empty() ? request.instance.selectedProfile : StringUtil::utf8toUTF16(args.mo2Profile);
+    if (request.profile.empty() || ranges::find(request.instance.profiles, request.profile) == request.instance.profiles.end()) {
+        throw runtime_error("The profile \"" + StringUtil::utf16toUTF8(request.profile) + "\" does not exist in the instance \""
+            + StringUtil::utf16toUTF8(request.instance.displayName) + "\"");
+    }
+
+    if (!args.mo2Exe.empty()) {
+        request.mo2Exe = filesystem::path(StringUtil::utf8toUTF16(args.mo2Exe));
+    } else if (const auto found = Mo2Launcher::findMo2Exe()) {
+        request.mo2Exe = *found;
+    } else {
+        throw runtime_error("Cannot find ModOrganizer.exe, pass its path with --mo2-exe");
+    }
+    if (!filesystem::exists(request.mo2Exe)) {
+        throw runtime_error("ModOrganizer.exe does not exist: " + request.mo2Exe.string());
+    }
+
+    const auto gameDir = args.params.gameDir.empty() ? request.instance.gameDir : filesystem::absolute(args.params.gameDir);
+    const auto outputDir = args.params.outputDir.empty() ? request.instance.modsDir / L"AutoSeasons Output"
+                                                          : filesystem::absolute(args.params.outputDir);
+
+    request.childArguments = optionsForChildRun(argC, argV);
+    if (app.count("--game-type") == 0) {
+        request.childArguments.emplace_back("--game-type");
+        request.childArguments.push_back(gameTypeOfInstance(request.instance));
+    }
+    request.childArguments.emplace_back("--");
+    request.childArguments.push_back(StringUtil::utf16toUTF8(gameDir.wstring()));
+    request.childArguments.push_back(StringUtil::utf16toUTF8(outputDir.wstring()));
+    request.onLogLine = [](const string& line) { cout << line << '\n'; };
+
+    spdlog::info("Running under Mod Organizer: instance \"{}\", profile \"{}\"",
+        StringUtil::utf16toUTF8(request.instance.displayName), StringUtil::utf16toUTF8(request.profile));
+    spdlog::info("Output folder: {}", outputDir.string());
+    return Mo2Launcher::runUnderMo2(request);
 }
 
 auto runCLI(int argC, char** argV, const filesystem::path& exePath) -> int
@@ -140,15 +248,61 @@ auto runCLI(int argC, char** argV, const filesystem::path& exePath) -> int
         return code;
     }
 
-    args.params.gameType = BethesdaGame::getGameTypeFromStr(args.gameType);
+    const bool isChildRun = !args.statusFile.empty();
+    if (!args.configFile.empty()) {
+        const bool isDryRun = args.params.dryRun;
+        args.params = ASConfig::loadFrom(StringUtil::utf8toUTF16(args.configFile));
+        args.params.dryRun = isDryRun;
+    }
 
-    const vector<spdlog::sink_ptr> sinks { make_shared<spdlog::sinks::stdout_color_sink_mt>() };
+    const vector<spdlog::sink_ptr> consoleSinks { make_shared<spdlog::sinks::stdout_color_sink_mt>() };
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
     if (args.verbosity >= 1) {
         spdlog::set_level(spdlog::level::debug);
     }
     if (args.verbosity >= 2) {
         spdlog::set_level(spdlog::level::trace);
+    }
+
+    if (!args.mo2Instance.empty() && !isChildRun && !Mo2Launcher::isRunningUnderMo2()) {
+        int mo2Result = 1;
+        try {
+            mo2Result = runThroughMo2(args, app, argC, argV);
+        } catch (const exception& e) {
+            spdlog::error("{}", e.what());
+        }
+        if (mo2Result != 0 && isSoleConsoleOwner()) {
+            pauseBeforeExit();
+        }
+        return mo2Result;
+    }
+
+    if (args.params.gameDir.empty()) {
+        try {
+            if (args.mo2Instance.empty()) {
+                throw runtime_error("game-dir is required (or --mo2-instance)");
+            }
+            args.params.gameDir = Mo2Launcher::readInstance(StringUtil::utf8toUTF16(args.mo2Instance)).gameDir;
+        } catch (const exception& e) {
+            spdlog::error("{}", e.what());
+            return 1;
+        }
+    }
+
+    if (args.configFile.empty()) {
+        args.params.gameType = BethesdaGame::getGameTypeFromStr(args.gameType);
+    }
+
+    // The child run inside Mod Organizer reports through files its parent follows: its log, and how it ended.
+    vector<spdlog::sink_ptr> sinks = consoleSinks;
+    if (!args.mirrorLog.empty()) {
+        try {
+            sinks.push_back(make_shared<spdlog::sinks::basic_file_sink_mt>(
+                StringUtil::utf8toUTF16(args.mirrorLog), true));
+            spdlog::flush_every(chrono::milliseconds(300));
+        } catch (const exception& e) {
+            spdlog::error("Cannot write the log for the program that started this run: {}", e.what());
+        }
     }
 
     CPPTRACE_TRY { AutoSeasonsRunner::run(args.params, exePath, sinks, args.multithreading); }
@@ -165,7 +319,10 @@ auto runCLI(int argC, char** argV, const filesystem::path& exePath) -> int
 
     // Always pause on failure when nobody's watching an existing terminal, so double-click/MO2
     // launches don't just flash an error and vanish. --shortcut pauses unconditionally.
-    if (args.shortcut || (returnCode != 0 && isSoleConsoleOwner())) {
+    if (isChildRun) {
+        spdlog::default_logger()->flush();
+        ofstream(StringUtil::utf8toUTF16(args.statusFile)) << "exit " << returnCode << '\n';
+    } else if (args.shortcut || (returnCode != 0 && isSoleConsoleOwner())) {
         pauseBeforeExit();
     }
 
@@ -296,6 +453,22 @@ auto main(int argC, char** argV) -> int
 
     if (argC <= 1) {
         return runGUI(exePath);
+    }
+
+    // The run that AutoSeasons starts inside Mod Organizer takes its command line from a file (Mo2Launcher)
+    if (argC == 3 && string(argV[1]) == Mo2Launcher::argumentsFileOption) {
+        vector<string> lines;
+        try {
+            lines = Mo2Launcher::readArgumentsFile(StringUtil::utf8toUTF16(argV[2]));
+        } catch (const exception& e) {
+            cerr << e.what() << '\n';
+            return 1;
+        }
+        vector<char*> pointers { argV[0] };
+        for (auto& line : lines) {
+            pointers.push_back(line.data());
+        }
+        return runCLI(static_cast<int>(pointers.size()), pointers.data(), exePath);
     }
 
     return runCLI(argC, argV, exePath);

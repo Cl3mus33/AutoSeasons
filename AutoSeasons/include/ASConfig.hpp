@@ -76,6 +76,12 @@ struct ASParams {
     // deliberately never read from or written to AutoSeasons_config.json (see ASConfig::load/
     // save), so it always defaults to false and has to be opted into each time.
     bool dryRun = false;
+    // Mod Organizer 2 instance (a global instance's name, or the folder of a portable one) and profile to run
+    // inside, chosen in the Launcher so AutoSeasons need not be started from MO2's tool list - see
+    // Mo2Launcher. Both empty means "run where AutoSeasons was started", as before.
+    std::wstring mo2Instance;
+    std::wstring mo2Profile;
+    std::filesystem::path mo2Exe; ///< ModOrganizer.exe, empty to find it from MO2's own settings
 };
 
 /**
