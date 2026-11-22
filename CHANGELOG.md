@@ -3,15 +3,32 @@
 All notable changes to this project are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.3.0] - 2026-11-22
+
+### Added
+- Run under a Mod Organizer 2 instance and profile chosen in AutoSeasons itself, so it no longer has
+  to be added to MO2's tool list. The launcher has a new "Mod Organizer 2 Instance" section (the
+  global instances are listed; the instance fills in the game folder and an output folder
+  `mods\AutoSeasons Output`), and the command line has `--mo2-instance`, `--mo2-profile` and
+  `--mo2-exe`. AutoSeasons starts itself inside the chosen instance with
+  `ModOrganizer.exe -i <instance> -p <profile> run` and shows that run's log. Running it from MO2's
+  tool list still works exactly as before.
+
+### Changed
+- "Manage Season Mod Conflicts" is disabled while an MO2 instance is chosen in the launcher: the
+  dialog scans the real Data folder, which does not hold the mods outside of MO2.
+- The game location note in the launcher now says to choose the MO2 instance (Vortex users still
+  run it from their dashboard).
 
 ### Removed
 - The GPU requirement. AutoSeasons used to start a Direct3D device and compile compute shaders on
   every run to classify `_m` textures as Complex Material or not, a result nothing in AutoSeasons
   ever read (seasonal PBR detection is driven by PBRNIFPatcher rules, not by texture contents). The
   GPU initialization, the `AutoSeasons_cshaders` folder and the DirectXTex dependency are gone, so
-  the "Failed to initialize GPU" / "Failed to initialize internal shaders" errors can no longer
-  happen, and the file scan no longer waits for texture classification.
+  the "Failed to initialize GPU" / "Failed to initialize internal shaders" errors (and the
+  "Failed to compile shader" error on Linux/Proton setups) can no longer happen, and the file scan
+  no longer waits for texture classification. The generated plugin, `Seasons` ini files and PBR
+  files are identical to 1.2.4's on the same load order.
 
 ## [1.2.4] - 2026-09-13
 

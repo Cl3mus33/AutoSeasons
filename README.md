@@ -7,8 +7,8 @@ in-game — no manual xEdit/CK work required.
 
 ## What it does
 
-Point AutoSeasons at your merged load order (via Mod Organizer 2, Vortex, or a plain Data folder)
-and it will:
+Point AutoSeasons at your merged load order (pick your Mod Organizer 2 instance and profile, or
+use Vortex or a plain Data folder) and it will:
 
 - Scan every Static, Activator, Furniture, MovableStatic, Tree, Flora, and LandscapeTexture record
   for a seasonal sibling texture on disk (e.g. `rock01_AUT.dds` next to `rock01.dds`), recognizing
@@ -34,12 +34,18 @@ their textures/meshes to be picked up automatically.
 
 1. Download the latest release and install it like any other mod (MO2: as a regular mod;
    Vortex: extract into a mod folder).
-2. Point it at your game install / merged load order and an output folder.
+2. With Mod Organizer 2, choose your instance and profile in AutoSeasons' launcher: it starts
+   itself inside them, so it does not need to be in MO2's tool list (it still works from there
+   too). Otherwise point it at your game install / merged load order. Pick an output folder (with an
+   MO2 instance it defaults to `mods\AutoSeasons Output`; keep that mod disabled while generating).
 3. Run it, then enable the generated plugin in your mod manager.
 4. Requires [Seasons of Skyrim](https://www.nexusmods.com/skyrimspecialedition/mods/62861) to
    actually see anything change in-game — AutoSeasons only generates the data it reads.
 
 Supports Skyrim SE (Steam), Skyrim GOG, Skyrim VR, and Enderal SE.
+
+From the command line, `AutoSeasons.exe --mo2-instance "<instance name>" --mo2-profile "<profile>"`
+does the same (`--help` lists every option). No GPU is needed.
 
 ## For mod authors
 
@@ -70,8 +76,8 @@ cmake --build buildRelease
 
 The C# Mutagen backend (`ASMutagen/`) is built and published automatically as part of this same
 CMake build (via DNNE, which exports it as a native DLL callable from the C++ side) — no separate
-`dotnet build` step is needed. The built executable and its runtime dependencies (shaders,
-`AutoSeasons_translations/`, .NET runtime files) end up in `buildRelease/bin/`.
+`dotnet build` step is needed. The built executable and its runtime dependencies
+(`AutoSeasons_translations/`, .NET runtime files) end up in `buildRelease/bin/`.
 
 ## Credits
 
